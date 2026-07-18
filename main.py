@@ -1,24 +1,29 @@
-from flask import Flask
-import threading
 import os
-from playwright.sync_api import sync_playwright
+from fastapi import FastAPI
+from playwright.async_api import async_playwright
 
-app = Flask(__name__)
+app = FastAPI()
 
-@app.route("/")
-def home():
-    return "Bot attivo"
+@app.get("/")
+async def run_scraper():
+    async with async_playwright() as p:
+        # Avvia il browser in modalità headless
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page()
+        
+        # Sostituisci con il sito che vuoi testare
+        await page.goto("https://example.com")
+        title = await page.title()
+        
+        await browser.close()
+        
+        return {
+            "status": "success",
+            "extracted_title": title
+        }
 
-def bot():
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-
-        while True:
-            page = browser.new_page()
-            page.goto("https://example.com")
-            print(page.title())
-            page.close()
-
-threading.Thread(target=bot, daemon=True).start()
-
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+if __name__ == "__main__":
+    import uvicorn
+    # Render assegna automaticamente una porta tramite la variabile d'ambiente PORT
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
