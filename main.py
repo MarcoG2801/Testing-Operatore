@@ -1,29 +1,35 @@
-import os
-from fastapi import FastAPI
+import asyncio
 from playwright.async_api import async_playwright
 
-app = FastAPI()
-
-@app.get("/")
-async def run_scraper():
+async def get_page_title(url: str) -> str:
+    # Usiamo async per gestirlo al meglio all'interno di un server bot
     async with async_playwright() as p:
-        # Avvia il browser in modalità headless
+        # Avviamo il browser in background (headless=True)
         browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
         
-        # Sostituisci con il sito che vuoi testare
-        await page.goto("https://example.com")
-        title = await page.title()
-        
-        await browser.close()
-        
-        return {
-            "status": "success",
-            "extracted_title": title
-        }
+        try:
+            # Naviga all'URL desiderato
+            await page.goto(url, timeout=30000)
+            
+            # Estrae il titolo della pagina (il tag <title>)
+            title = await page.title()
+            return title
+            
+        except Exception as e:
+            return f"Errore durante l'estrazione: {e}"
+            
+        finally:
+            # Chiudiamo sempre il browser per non sprecare RAM sul server
+            await browser.close()
 
+# Esempio di utilizzo (come lo chiameresti nel codice del tuo bot)
+async def main():
+    target_url = "https://www.example.com"
+    nome_pagina = await get_page_title(target_url)
+    
+    print(f"Nome estratto da inviare al bot: {nome_pagina}")
+
+# Esegui lo script
 if __name__ == "__main__":
-    import uvicorn
-    # Render assegna automaticamente una porta tramite la variabile d'ambiente PORT
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    asyncio.run(main())
