@@ -1,33 +1,24 @@
+from flask import Flask
+import threading
+import os
 from playwright.sync_api import sync_playwright
-import time
-import traceback
 
+app = Flask(__name__)
 
-def run():
+@app.route("/")
+def home():
+    return "Bot attivo"
+
+def bot():
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
 
         while True:
-            try:
-                page = browser.new_page()
+            page = browser.new_page()
+            page.goto("https://example.com")
+            print(page.title())
+            page.close()
 
-                page.goto("https://example.com")
+threading.Thread(target=bot, daemon=True).start()
 
-                print(page.title())
-
-                page.close()
-
-                time.sleep(60)
-
-            except Exception:
-                traceback.print_exc()
-                time.sleep(10)
-
-
-if __name__ == "__main__":
-    while True:
-        try:
-            run()
-        except Exception:
-            traceback.print_exc()
-            time.sleep(30)
+app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
