@@ -23,10 +23,7 @@ app.get("/title", async (req, res) => {
 
             const title = await page.title();
 
-            res.json({
-                success: true,
-                title
-            });
+            console.log(title);
         }
 
     } catch (err) {
