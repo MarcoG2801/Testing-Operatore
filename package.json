@@ -1,11 +1,13 @@
 {
-  "name": "playwright-render",
+  "name": "playwright-render-service",
   "version": "1.0.0",
+  "description": "Playwright H24 Render",
+  "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "express": "^4.21.0",
-    "playwright": "^1.55.0"
+    "express": "^4.21.2",
+    "playwright": "^1.54.0"
   }
 }
