@@ -38,7 +38,7 @@ var edificiUrl = [];
     console.log("Avvio browser...");
 
     browser = await chromium.launch({
-        headless: false
+        headless: true
     });
     const page = await browser.newPage();
 
