@@ -31,8 +31,6 @@ password = "Gemelli@2001";
 controlFirstLogin = true;
 var edificiLink = [];
 var edificiUrl = [];
-var idVeicoli = [];
-var urlVeicolo = [];
 
 const cartellaData = path.join(__dirname, "data");
 const fileVeicoli = path.join(cartellaData, "vehicle_data.json");
@@ -168,6 +166,7 @@ async function assunzione(page) {
 }
 
 async function raccogliDatiVeicoli(page) {
+    const idVeicoli = [];
     try {
 
         await page.goto("https://www.operatore112.it/leitstellenansicht");
@@ -181,11 +180,11 @@ async function raccogliDatiVeicoli(page) {
 
         // Estrae l'ID da ogni collegamento trovato
         for (const collegamento of collegamentiVeicoli) {
-            urlVeicolo = await collegamento.getAttribute("href");
+            const urlVeicolo = await collegamento.getAttribute("href");
 
             // Se l'attributo href esiste, ricava l'ID del veicolo
             if (urlVeicolo) {
-                idVeicolo = urlVeicolo.split("/").pop();
+                const idVeicolo = urlVeicolo.split("/").pop();
 
                 // Salva l'ID nell'array
                 idVeicoli.push(idVeicolo);
