@@ -113,11 +113,11 @@ async function login(page) {
 
         } catch {
             // Il messaggio non è comparso: login riuscito
-            console.log('Login riuscito.');
+            console.log(chalk.green("✔ Login riuscito"));
         }
 
     } catch (e) {
-        console.error('Thread ${threadId} encountered an error:', e);
+        console.error(chalk.red('Thread ${threadId} encountered an error:'), e);
     }
 }
 
