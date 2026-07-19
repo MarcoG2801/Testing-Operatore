@@ -46,7 +46,7 @@ const fileVeicoli = path.join(cartellaData, "vehicle_data.json");
     console.log("Avvio browser...");
 
     browser = await chromium.launch({
-        headless: false
+        headless: true
     });
     const page = await browser.newPage();
 
