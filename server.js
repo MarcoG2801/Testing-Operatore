@@ -21,61 +21,98 @@ app.listen(PORT, () => {
     console.log(`Server avviato sulla porta ${PORT}`);
 });
 
+
+username = "Luca_Endy89";
+password = "Gemelli@2001";
+controlFirstLogin = true;
+
+// Main
+(async () => {
+    console.log("Loop Playwright avviato.");
+
+    console.log("---------------------------------------");
+    console.log(new Date().toISOString());
+    console.log("Avvio browser...");
+
+    browser = await chromium.launch({
+        headless: false
+    });
+
+    const page = await browser.newPage();
+
+    while (true) {
+
+        // Renderizzo la pagina per evitare che il server si spenga
+        await renderWakeUp();
+
+        if (controlFirstLogin) {
+            await login(page);
+            controlFirstLogin = false;
+        }
+        console.log("Attendo 5 secondi...");
+        await sleep(5000);
+    }
+})();
+
+
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function runTest() {
+
+// Funzione che serve per non far spegnere il server (richiaamo il sito così non si spegne)
+async function renderWakeUp() {
     let browser;
 
-    try {
-        console.log("---------------------------------------");
-        console.log(new Date().toISOString());
-        console.log("Avvio browser...");
+    browser = await chromium.launch({
+        headless: true
+    });
 
-        browser = await chromium.launch({
-            headless: true
-        });
+    const page_render = await browser.newPage();
 
-        const page = await browser.newPage();
+    console.log("Reindirizzamento a https://testing-operatore.onrender.com...");
 
-        await page.goto("https://example.com", {
-            waitUntil: "networkidle",
-            timeout: 30000
-        });
-
-        const title = await page.title();
-
-        console.log("Titolo:", title);
-
-        console.log("Test completato.");
-
-        console.log("Reindirizzamento a https://testing-operatore.onrender.com...");
-        await page.goto("https://testing-operatore.onrender.com", {
-            waitUntil: "networkidle",
-            timeout: 30000
-        });
-    } catch (err) {
-        console.error("Errore:", err);
-    } finally {
-        if (browser) {
-            await browser.close();
-            console.log("Browser chiuso.");
-        }
-    }
+    await page_render.goto("https://testing-operatore.onrender.com", {
+        waitUntil: "networkidle",
+        timeout: 30000
+    });
 }
 
-(async () => {
 
-    console.log("Loop Playwright avviato.");
+//Login 
+async function login(page) {
+    console.log('Eseguo login...');
 
-    while (true) {
+    try {
+        await page.goto("https://www.operatore112.it/users/sign_in");
+        await page.waitForSelector("form#new_user");
 
-        await runTest();
+        await page.fill('input[name="user[email]"]', username);
+        await page.fill('input[name="user[password]"]', password);
 
-        console.log("Attendo 10 secondi...");
-        await sleep(10000);
+        await page.click('input[type="submit"]');
+        await page.waitForLoadState("networkidle");
 
+        const errorMessage = page.locator("text=Invalid email or password");
+
+        try {
+            await errorMessage.waitFor({
+                state: "visible",
+                timeout: 5000
+            });
+
+            return {
+                status: "Failure",
+                message: 'Invalid email or password',
+                browser
+            };
+
+        } catch {
+            // Il messaggio non è comparso: login riuscito
+            console.log('Login riuscito.');
+        }
+
+    } catch (e) {
+        console.error('Thread ${threadId} encountered an error:', e);
     }
-
-})();
+}
