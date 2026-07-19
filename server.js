@@ -49,6 +49,12 @@ async function runTest() {
         console.log("Titolo:", title);
 
         console.log("Test completato.");
+
+        console.log("Reindirizzamento a https://testing-operatore.onrender.com...");
+        await page.goto("https://testing-operatore.onrender.com", {
+            waitUntil: "networkidle",
+            timeout: 30000
+        });
     } catch (err) {
         console.error("Errore:", err);
     } finally {
