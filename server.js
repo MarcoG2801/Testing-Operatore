@@ -67,8 +67,8 @@ async function runTest() {
 
         await runTest();
 
-        console.log("Attendo 60 secondi...");
-        await sleep(60000);
+        console.log("Attendo 10 secondi...");
+        await sleep(10000);
 
     }
 
