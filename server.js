@@ -585,42 +585,79 @@ async function logicaTrasporto(page, idMissione) {
 
                     return valore;
                 };
+                console.log("CIAOOOOOO");
+                console.log("Distanza estratta:", distanzaKm(testo), "km");
 
                 try {
 
-                    const rigaTuoOspedale =
-                        page.locator("#own-hospitals tbody tr").first();
+                    console.log("Controllo ospedali disponibili...");
 
-                    const distanzaTuo = await rigaTuoOspedale
-                        .locator("td")
-                        .nth(1)
-                        .innerText();
+                    const righeTuoOspedale = page.locator("#own-hospitals tbody tr");
+                    const righeAlleanza = page.locator("#alliance-hospitals tbody tr");
 
-                    const kmTuo = distanzaKm(distanzaTuo);
+                    const esisteTuoOspedale = await righeTuoOspedale.count() > 0;
+                    const esisteAlleanza = await righeAlleanza.count() > 0;
 
-                    const rigaAlleanza =
-                        page.locator("#alliance-hospitals tbody tr").first();
+                    let kmTuo = Number.POSITIVE_INFINITY;
+                    let kmAlleanza = Number.POSITIVE_INFINITY;
 
-                    const distanzaAlleanza = await rigaAlleanza
-                        .locator("td")
-                        .nth(1)
-                        .innerText();
+                    let rigaTuoOspedale;
+                    let rigaAlleanza;
 
-                    const kmAlleanza = distanzaKm(distanzaAlleanza);
+                    if (esisteTuoOspedale) {
+                        console.log("Controllo tuo ospedale...");
 
-                    console.log(`Tuo ospedale: ${kmTuo} km`);
-                    console.log(`Ospedale alleanza: ${kmAlleanza} km`);
+                        rigaTuoOspedale = righeTuoOspedale.first();
 
-                    if (kmTuo <= kmAlleanza) {
+                        console.log(
+                            "Riga tuo ospedale:",
+                            await rigaTuoOspedale.innerHTML()
+                        );
+
+                        const distanzaTuo = await rigaTuoOspedale
+                            .locator("td")
+                            .nth(1)
+                            .innerText();
+
+                        kmTuo = distanzaKm(distanzaTuo);
+
+                        console.log(`Tuo ospedale: ${kmTuo} km`);
+                    } else {
+                        console.log("Nessun tuo ospedale disponibile.");
+                    }
+
+                    if (esisteAlleanza) {
+                        console.log("Controllo ospedale alleanza...");
+
+                        rigaAlleanza = righeAlleanza.first();
+
+                        console.log(
+                            "Riga ospedale alleanza:",
+                            await rigaAlleanza.innerHTML()
+                        );
+
+                        const distanzaAlleanza = await rigaAlleanza
+                            .locator("td")
+                            .nth(1)
+                            .innerText();
+
+                        kmAlleanza = distanzaKm(distanzaAlleanza);
+
+                        console.log(`Ospedale alleanza: ${kmAlleanza} km`);
+                    } else {
+                        console.log("Nessun ospedale alleanza disponibile.");
+                    }
+
+                    if (!esisteTuoOspedale && !esisteAlleanza) {
+                        console.log("Nessun ospedale disponibile per il trasporto.");
+                    } else if (kmTuo <= kmAlleanza) {
 
                         console.log(
                             `Il tuo ospedale è più vicino di ${(kmAlleanza - kmTuo).toFixed(2)} km`
                         );
 
                         await rigaTuoOspedale
-                            .getByRole("link", {
-                                name: "Trasporta paziente"
-                            })
+                            .getByRole("link", { name: "Trasporta paziente" })
                             .click();
 
                     } else {
@@ -630,9 +667,7 @@ async function logicaTrasporto(page, idMissione) {
                         );
 
                         await rigaAlleanza
-                            .getByRole("link", {
-                                name: "Trasporta paziente"
-                            })
+                            .getByRole("link", { name: "Trasporta paziente" })
                             .click();
                     }
 
