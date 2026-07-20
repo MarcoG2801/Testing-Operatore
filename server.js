@@ -1468,6 +1468,7 @@ function ottieniMezziAlternativi(tipoMezzo) {
         ],
 
         "pattuglie o veicoli della polizia locale": [
+            "Auto della polizia locale",
             "Volante"
         ],
 
