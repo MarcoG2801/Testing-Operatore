@@ -3,6 +3,7 @@ const { chromium } = require("playwright");
 const chalk = require("chalk");
 const fs = require("fs");
 const path = require("path");
+const https = require("https");
 
 
 const app = express();
@@ -53,15 +54,9 @@ var totaleVeicoli = 0;
     });
     const page = await browser.newPage();
 
-
-    browser_wakeUp = await chromium.launch({
-        headless: true
-    });
-    const page_wakeUp = await browser_wakeUp.newPage();
-
     while (true) {
         // Renderizzo la pagina per evitare che il server si spenga
-        await renderWakeUp(page_wakeUp);
+        await renderWakeUp();
 
         if (controlFirstLogin) {
             await login(page);
@@ -90,9 +85,10 @@ function sleep(ms) {
 
 
 // Funzione che serve per non far spegnere il server (richiaamo il sito così non si spegne)
-async function renderWakeUp(page_wakeUp) {
-    console.log("Reindirizzamento a https://testing-operatore.onrender.com...");
-    await page_wakeUp.goto("https://testing-operatore.onrender.com");
+async function renderWakeUp() {
+    setInterval(() => {
+        https.get("https://testing-operatore.onrender.com");
+    }, 60000);
 }
 
 
