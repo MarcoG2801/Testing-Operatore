@@ -37,6 +37,9 @@ const cartellaData = path.join(__dirname, "data");
 const fileVeicoli = path.join(cartellaData, "vehicle_data.json");
 const fileMissioni = path.join(__dirname, "data", "mission_data.json");
 
+
+var totaleVeicoli = 0;
+
 // Main
 (async () => {
     console.log("Loop Playwright avviato.");
@@ -46,14 +49,19 @@ const fileMissioni = path.join(__dirname, "data", "mission_data.json");
     console.log("Avvio browser...");
 
     browser = await chromium.launch({
-        headless: false
+        headless: true
     });
     const page = await browser.newPage();
 
 
+    browser_wakeUp = await chromium.launch({
+        headless: true
+    });
+    const page_wakeUp = await browser_wakeUp.newPage();
+
     while (true) {
         // Renderizzo la pagina per evitare che il server si spenga
-        await renderWakeUp();
+        await renderWakeUp(page_wakeUp);
 
         if (controlFirstLogin) {
             await login(page);
@@ -61,10 +69,14 @@ const fileMissioni = path.join(__dirname, "data", "mission_data.json");
             // await assunzione(page);
         }
 
-        await raccogliDatiVeicoli(page);
+        if (totaleVeicoli === 0) {
+            console.log("Raccolta dati veicoli...");
+            await raccogliDatiVeicoli(page);
+        }
 
         await controllaDatiMissioni(page);
 
+        await logicaMissioni(page);
 
         console.log("Attendo 5 secondi...");
         await sleep(5000);
@@ -78,19 +90,9 @@ function sleep(ms) {
 
 
 // Funzione che serve per non far spegnere il server (richiaamo il sito così non si spegne)
-async function renderWakeUp() {
-    let browser;
-
-    browser = await chromium.launch({
-        headless: true
-    });
-    const page_render = await browser.newPage();
-
+async function renderWakeUp(page_wakeUp) {
     console.log("Reindirizzamento a https://testing-operatore.onrender.com...");
-    await page_render.goto("https://testing-operatore.onrender.com", {
-        waitUntil: "networkidle",
-        timeout: 30000
-    });
+    await page_wakeUp.goto("https://testing-operatore.onrender.com");
 }
 
 
@@ -199,6 +201,8 @@ async function raccogliDatiVeicoli(page) {
 
         // Mostra quanti veicoli sono stati trovati
         console.log(`Trovati ${idVeicoli.length} ID veicoli.`);
+
+        totaleVeicoli = idVeicoli.length;
 
         vehicle_data = await raccogliInfoVeicoli(idVeicoli, page);
 
@@ -348,6 +352,13 @@ async function raccogliInfoMissioni(idMissioni, page) {
             }
 
             const nomeMissione = (await elementoNome.innerText()).trim();
+
+
+            /////dfdsfdfdfdf
+            /////sdfsdfs
+            //dfsfd
+
+            logicaTrasporto(page, idMissione);
 
             const pazienti = await page.locator("//div[contains(@class,'mission_patient')]").count();
 
@@ -521,4 +532,1048 @@ function rimuoviPlurale(nomeVeicolo) {
     }
 
     return parti.join(" ");
+}
+
+
+async function logicaTrasporto(page, idMissione) {
+    console.log("Avvio logica trasporto.");
+
+    try {
+        console.log("Controllo richieste di trasporto.");
+
+        // ---------------------------
+        // CONTROLLO PAZIENTI
+        // ---------------------------
+
+        const linkTrasporto = page
+            .locator("div.alert.alert-danger", {
+                hasText: "Trasporto necessario!"
+            })
+            .locator("a");
+
+        const numeroLink = await linkTrasporto.count();
+
+        console.log(numeroLink);
+
+        if (numeroLink !== 0) {
+
+            for (let i = 0; i < numeroLink; i++) {
+
+                const link = linkTrasporto.nth(i);
+
+                const href = await link.getAttribute("href");
+                const testo = await link.innerText();
+
+                console.log(`Link trovato ${i + 1}: ${testo} -> ${href}`);
+
+                await page.goto(`https://www.operatore112.it${href}`);
+
+                console.log(`URL attuale: ${page.url()}`);
+
+                const distanzaKm = (testo) => {
+
+                    testo = testo
+                        .toLowerCase()
+                        .replace(",", ".")
+                        .trim();
+
+                    const valore = parseFloat(
+                        testo.replace(/[^\d.]/g, "")
+                    );
+
+                    if (testo.includes("km"))
+                        return valore;
+
+                    if (testo.includes("m"))
+                        return valore / 1000;
+
+                    return valore;
+                };
+
+                try {
+
+                    const rigaTuoOspedale =
+                        page.locator("#own-hospitals tbody tr").first();
+
+                    const distanzaTuo = await rigaTuoOspedale
+                        .locator("td")
+                        .nth(1)
+                        .innerText();
+
+                    const kmTuo = distanzaKm(distanzaTuo);
+
+                    const rigaAlleanza =
+                        page.locator("#alliance-hospitals tbody tr").first();
+
+                    const distanzaAlleanza = await rigaAlleanza
+                        .locator("td")
+                        .nth(1)
+                        .innerText();
+
+                    const kmAlleanza = distanzaKm(distanzaAlleanza);
+
+                    console.log(`Tuo ospedale: ${kmTuo} km`);
+                    console.log(`Ospedale alleanza: ${kmAlleanza} km`);
+
+                    if (kmTuo <= kmAlleanza) {
+
+                        console.log(
+                            `Il tuo ospedale è più vicino di ${(kmAlleanza - kmTuo).toFixed(2)} km`
+                        );
+
+                        await rigaTuoOspedale
+                            .getByRole("link", {
+                                name: "Trasporta paziente"
+                            })
+                            .click();
+
+                    } else {
+
+                        console.log(
+                            `L'ospedale alleanza è più vicino di ${(kmTuo - kmAlleanza).toFixed(2)} km`
+                        );
+
+                        await rigaAlleanza
+                            .getByRole("link", {
+                                name: "Trasporta paziente"
+                            })
+                            .click();
+                    }
+
+                    await page.waitForTimeout(2000);
+
+                    console.log("Trasporto effettuato.");
+
+                    await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
+
+                } catch (err) {
+
+                    console.log("Errore:", err);
+
+                    await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
+                }
+            }
+
+        } else {
+
+            console.log("Nessun paziente.");
+
+            // ---------------------------
+            // CONTROLLO DETENUTI
+            // ---------------------------
+
+            if (await page.locator(".alert-missing-vehicles").isVisible()) {
+                console.log("Alert veicoli presente.");
+            }
+
+            const bottoneCarceri = page.locator("#btn-show-available-prisons");
+
+            if (await bottoneCarceri.isVisible()) {
+                await bottoneCarceri.click();
+                await page.waitForTimeout(800);
+            }
+
+            function estraiDistanza(testo) {
+
+                const match = testo
+                    .toLowerCase()
+                    .match(/(\d+[,.]?\d*)\s*(km|m)/);
+
+                if (!match)
+                    return Number.MAX_VALUE;
+
+                let valore = parseFloat(
+                    match[1].replace(",", ".")
+                );
+
+                if (match[2] === "m")
+                    valore /= 1000;
+
+                return valore;
+            }
+
+            const rigaPrigionieri = page.locator(".vehicle_prisoner_select");
+
+            if ((await rigaPrigionieri.count()) > 0) {
+
+                const links = rigaPrigionieri.locator("a");
+
+                const totale = await links.count();
+
+                const destinazioni = [];
+
+                for (let i = 0; i < totale; i++) {
+
+                    const link = links.nth(i);
+
+                    const testo = await link.innerText();
+
+                    destinazioni.push({
+                        elemento: link,
+                        testo: testo.trim(),
+                        distanza: estraiDistanza(testo)
+                    });
+                }
+
+                destinazioni.sort(
+                    (a, b) => a.distanza - b.distanza
+                );
+
+                console.log("Destinazioni ordinate:");
+
+                destinazioni.forEach(dest => {
+                    console.log(
+                        `${dest.distanza.toFixed(3)} km -> ${dest.testo}`
+                    );
+                });
+
+                if (destinazioni.length > 0) {
+
+                    console.log(
+                        `Invio detenuto a: ${destinazioni[0].testo}`
+                    );
+
+                    await destinazioni[0].elemento.click();
+
+                    await page.goto(
+                        `https://www.operatore112.it/missions/${idMissione}`
+                    );
+                }
+
+            } else {
+
+                console.log("Nessuna destinazione trovata.");
+
+                await page.goto(
+                    `https://www.operatore112.it/missions/${idMissione}`
+                );
+            }
+        }
+
+    } catch (err) {
+
+        console.log("Errore nella logica trasporto:", err);
+
+        await page.waitForTimeout(1000);
+
+        await page.goto(
+            `https://www.operatore112.it/missions/${idMissione}`
+        );
+    }
+}
+
+
+async function logicaMissioni(page) {
+    console.log("Inizio Logica Missioni");
+
+    console.log("Naviga e Smistamento Missioni")
+    await navigaEInviaMezzi(page)
+}
+
+
+async function navigaEInviaMezzi(page) {
+
+    // Controlla che il file delle missioni esista
+    if (!fs.existsSync("data/mission_data.json")) {
+        console.log("Il file mission_data.json non esiste. Interruzione della funzione.");
+        return;
+    }
+
+    // Carica i dati delle missioni
+    const datiMissioni = JSON.parse(
+        fs.readFileSync("data/mission_data.json", "utf8")
+    );
+
+    // Cicla tutte le missioni presenti nel file JSON
+    for (const [idMissione, dati] of Object.entries(datiMissioni)) {
+
+        const nomeMissione = dati.mission_name || "Missione sconosciuta";
+        const autoIncidentate = dati.crashed_cars || 0;
+        const pazienti = dati.patients || 0;
+
+        console.log(
+            `Invio mezzi per ${nomeMissione} 
+            (Auto incidentate: ${autoIncidentate}) 
+            (Pazienti: ${pazienti})`
+        );
+
+
+        // Apre la pagina della missione
+        await page.goto(
+            `https://www.operatore112.it/missions/${idMissione}`
+        );
+
+
+        // Aspetta che la missione venga caricata
+        try {
+
+            await page.waitForSelector("#missionH1", {
+                timeout: 5000
+            });
+
+        } catch (errore) {
+
+            console.log(
+                `La missione ${idMissione} non è stata caricata in tempo. Saltata.`
+            );
+
+            continue;
+        }
+
+
+
+        // Se ci sono mezzi mancanti disponibili, li carica
+        const pulsanteMezziMancanti = await page.$(
+            "a.missing_vehicles_load.btn-warning"
+        );
+
+        if (pulsanteMezziMancanti) {
+
+            await pulsanteMezziMancanti.click();
+
+            await page.waitForLoadState("networkidle");
+
+            console.log(
+                `Caricati mezzi aggiuntivi per la missione ${idMissione}`
+            );
+        }
+
+
+
+        // Gestione dei mezzi richiesti dalla missione
+        const richiesteMezzi = dati.vehicles || [];
+
+
+        for (const richiesta of richiesteMezzi) {
+
+            const nomeMezzo = richiesta.name;
+            const quantitaMezzo = richiesta.count;
+
+
+
+            /*
+                Caso speciale:
+                Il personale SWAT viene convertito in mezzi corazzati.
+                Ogni mezzo corazzato trasporta 6 operatori.
+            */
+            if (nomeMezzo.includes("SWAT Personnel")) {
+
+
+                const corazzatiNecessari = Math.floor(
+                    quantitaMezzo / 6
+                );
+
+
+                const idMezziCorazzati =
+                    await trovaIDMezzi("SWAT Armoured Vehicle");
+
+
+                let selezionati = 0;
+
+
+                // Seleziona prima i mezzi corazzati
+                for (const idMezzo of idMezziCorazzati) {
+
+
+                    if (selezionati >= corazzatiNecessari)
+                        break;
+
+
+                    const checkbox = await page.$(
+                        `input.vehicle_checkbox[value="${idMezzo}"]`
+                    );
+
+
+                    if (checkbox) {
+
+                        await page.evaluate(
+                            elemento => elemento.scrollIntoView(),
+                            checkbox
+                        );
+
+
+                        await page.evaluate(
+                            elemento => {
+                                elemento.click();
+                                elemento.dispatchEvent(
+                                    new Event("change", {
+                                        bubbles: true
+                                    })
+                                );
+                            },
+                            checkbox
+                        );
+
+
+                        console.log(
+                            `Selezionato mezzo SWAT corazzato (${idMezzo})`
+                        );
+
+                        selezionati++;
+                    }
+                }
+
+
+
+                // Se non bastano usa gli SUV SWAT
+                if (selezionati < corazzatiNecessari) {
+
+
+                    const idSUVSWAT =
+                        await trovaIDMezzi("SWAT SUV");
+
+
+                    for (const idSUV of idSUVSWAT) {
+
+
+                        if (selezionati >= quantitaMezzo)
+                            break;
+
+
+                        const checkbox = await page.$(
+                            `input.vehicle_checkbox[value="${idSUV}"]`
+                        );
+
+
+                        if (checkbox) {
+
+
+                            await page.evaluate(
+                                elemento => elemento.scrollIntoView(),
+                                checkbox
+                            );
+
+
+                            await page.evaluate(
+                                elemento => {
+                                    elemento.click();
+                                    elemento.dispatchEvent(
+                                        new Event("change", {
+                                            bubbles: true
+                                        })
+                                    );
+                                },
+                                checkbox
+                            );
+
+
+                            console.log(
+                                `Selezionato SUV SWAT (${idSUV})`
+                            );
+
+
+                            selezionati++;
+                        }
+                    }
+                }
+
+
+
+            } else {
+
+
+                // Gestione normale dei mezzi
+                const idMezzi =
+                    await trovaIDMezzi(nomeMezzo);
+
+
+
+                if (!idMezzi || idMezzi.length === 0) {
+
+                    console.log(
+                        `Tipo di mezzo '${nomeMezzo}' non trovato`
+                    );
+
+                    continue;
+                }
+
+
+
+                console.log(
+                    `Selezione ${quantitaMezzo} mezzo/i ${nomeMezzo}`
+                );
+
+
+                // Conta eventuali mezzi già selezionati
+                let selezionati =
+                    await contaMezziGiaSelezionati(
+                        page,
+                        nomeMezzo
+                    );
+
+
+
+                const checkboxDisponibili =
+                    await page.locator(
+                        "//input[contains(@id,'vehicle_checkbox')]"
+                    ).all();
+
+
+
+                const valoriCheckbox = [];
+
+
+                // Recupera gli ID dei mezzi disponibili nella pagina
+                for (const checkbox of checkboxDisponibili) {
+
+                    valoriCheckbox.push(
+                        await checkbox.getAttribute("value")
+                    );
+                }
+
+
+
+                // Seleziona i mezzi necessari
+                for (const numero of valoriCheckbox) {
+
+
+                    if (selezionati >= quantitaMezzo)
+                        break;
+
+
+
+                    if (idMezzi.includes(numero)) {
+
+
+                        const checkbox =
+                            await page.$(
+                                `input.vehicle_checkbox[value="${numero}"]`
+                            );
+
+
+
+                        if (checkbox) {
+
+
+                            await page.evaluate(
+                                elemento => elemento.scrollIntoView(),
+                                checkbox
+                            );
+
+
+                            await page.evaluate(
+                                elemento => {
+
+                                    elemento.click();
+
+                                    elemento.dispatchEvent(
+                                        new Event("change", {
+                                            bubbles: true
+                                        })
+                                    );
+
+                                },
+                                checkbox
+                            );
+
+
+
+                            console.log(
+                                `Selezionato ${nomeMezzo} (${numero})`
+                            );
+
+
+                            selezionati++;
+                        }
+                    }
+                }
+            }
+        }
+
+
+
+
+        /*
+            Gestione delle auto incidentate:
+            - più di una auto -> servono trasportatori o carri attrezzi
+            - una sola auto -> basta un carro attrezzi
+        */
+
+        if (autoIncidentate > 1) {
+
+
+            const trasportatoriNecessari =
+                autoIncidentate - 2;
+
+
+            const idTrasportatori =
+                await trovaIDMezzi("Flatbed Carrier");
+
+
+            let selezionati = 0;
+
+
+
+            // Prova prima con i trasportatori
+            for (const idMezzo of idTrasportatori) {
+
+
+                if (selezionati >= trasportatoriNecessari)
+                    break;
+
+
+
+                const checkbox = await page.$(
+                    `input.vehicle_checkbox[value="${idMezzo}"]`
+                );
+
+
+
+                if (checkbox) {
+
+
+                    await page.evaluate(
+                        elemento => elemento.scrollIntoView(),
+                        checkbox
+                    );
+
+
+                    await page.evaluate(
+                        elemento => {
+
+                            elemento.click();
+
+                            elemento.dispatchEvent(
+                                new Event("change", {
+                                    bubbles: true
+                                })
+                            );
+
+                        },
+                        checkbox
+                    );
+
+
+
+                    console.log(
+                        `Selezionato Flatbed Carrier (${idMezzo})`
+                    );
+
+
+                    selezionati++;
+                }
+            }
+
+
+
+            // Se mancano mezzi usa i carri attrezzi
+            if (selezionati < trasportatoriNecessari) {
+
+
+                const tipiCarroAttrezzi = [
+                    "Wrecker",
+                    "Police Wrecker",
+                    "Fire Wrecker"
+                ];
+
+
+
+                for (const tipo of tipiCarroAttrezzi) {
+
+
+                    const idCarri =
+                        await trovaIDMezzi(tipo);
+
+
+
+                    for (const idMezzo of idCarri) {
+
+
+                        if (selezionati >= trasportatoriNecessari)
+                            break;
+
+
+
+                        const checkbox =
+                            await page.$(
+                                `input.vehicle_checkbox[value="${idMezzo}"]`
+                            );
+
+
+
+                        if (checkbox) {
+
+                            await page.evaluate(
+                                elemento => elemento.scrollIntoView(),
+                                checkbox
+                            );
+
+
+                            await page.evaluate(
+                                elemento => {
+
+                                    elemento.click();
+
+                                    elemento.dispatchEvent(
+                                        new Event("change", {
+                                            bubbles: true
+                                        })
+                                    );
+
+                                },
+                                checkbox
+                            );
+
+
+                            console.log(
+                                `Selezionato ${tipo} (${idMezzo})`
+                            );
+
+
+                            selezionati++;
+                        }
+                    }
+                }
+            }
+
+
+
+        } else if (autoIncidentate === 1) {
+
+
+            const tipiCarroAttrezzi = [
+                "Wrecker",
+                "Police Wrecker",
+                "Fire Wrecker"
+            ];
+
+
+            let selezionati = 0;
+
+
+
+            // Cerca un qualsiasi carro attrezzi
+            for (const tipo of tipiCarroAttrezzi) {
+
+
+                const idCarri =
+                    await trovaIDMezzi(tipo);
+
+
+
+                for (const idMezzo of idCarri) {
+
+
+                    if (selezionati >= 1)
+                        break;
+
+
+
+                    const checkbox =
+                        await page.$(
+                            `input.vehicle_checkbox[value="${idMezzo}"]`
+                        );
+
+
+
+                    if (checkbox) {
+
+
+                        await page.evaluate(
+                            elemento => elemento.scrollIntoView(),
+                            checkbox
+                        );
+
+
+                        await page.evaluate(
+                            elemento => {
+
+                                elemento.click();
+
+                                elemento.dispatchEvent(
+                                    new Event("change", {
+                                        bubbles: true
+                                    })
+                                );
+
+                            },
+                            checkbox
+                        );
+
+
+                        console.log(
+                            `Selezionato ${tipo} (${idMezzo})`
+                        );
+
+
+                        selezionati++;
+                    }
+                }
+            }
+
+
+
+            // Se non trova carri attrezzi usa un trasportatore
+            if (selezionati === 0) {
+
+
+                const trasportatori =
+                    await trovaIDMezzi("Flatbed Carrier");
+
+
+                if (trasportatori.length > 0) {
+
+
+                    const checkbox =
+                        await page.$(
+                            `input.vehicle_checkbox[value="${trasportatori[0]}"]`
+                        );
+
+
+                    if (checkbox) {
+
+
+                        await page.evaluate(
+                            elemento => elemento.scrollIntoView(),
+                            checkbox
+                        );
+
+
+                        await page.evaluate(
+                            elemento => {
+
+                                elemento.click();
+
+                                elemento.dispatchEvent(
+                                    new Event("change", {
+                                        bubbles: true
+                                    })
+                                );
+
+                            },
+                            checkbox
+                        );
+
+
+                        console.log(
+                            `Selezionato Flatbed Carrier (${trasportatori[0]})`
+                        );
+                    }
+                }
+            }
+        }
+
+
+
+        // Invia la missione
+        const pulsanteInvio =
+            await page.$("#alert_btn");
+
+
+        if (pulsanteInvio) {
+
+
+            await pulsanteInvio.click();
+
+
+            console.log(
+                `Mezzi inviati per missione ${idMissione}`
+            );
+
+
+        } else {
+
+
+            console.log(
+                `Pulsante invio non trovato per missione ${idMissione}`
+            );
+        }
+    }
+}
+
+/**
+ * Restituisce gli ID dei mezzi compatibili con il nome richiesto.
+ * Cerca prima il tipo esatto e successivamente eventuali alternative.
+ */
+async function trovaIDMezzi(nomeMezzo) {
+
+    // Carica il file contenente tutti gli ID dei mezzi
+    const datiMezzi = JSON.parse(
+        fs.readFileSync("data/vehicle_data.json", "utf8")
+    );
+
+    // Array che conterrà tutti gli ID trovati
+    const idMezzi = [];
+
+    // Se il mezzo esiste nel file JSON aggiunge i suoi ID
+    if (nomeMezzo in datiMezzi) {
+
+        idMezzi.push(...datiMezzi[nomeMezzo]);
+    }
+
+    console.log("Ricerca mezzo:", nomeMezzo);
+
+    // Recupera eventuali mezzi alternativi
+    const mezziAlternativi = ottieniMezziAlternativi(nomeMezzo);
+
+    if (mezziAlternativi.length > 0) {
+
+        console.log(
+            `Ricerca alternative per "${nomeMezzo}": ${mezziAlternativi.join(", ")}`
+        );
+
+        // Aggiunge gli ID di tutti i mezzi alternativi
+        for (const nomeAlternativo of mezziAlternativi) {
+
+            if (nomeAlternativo in datiMezzi) {
+
+                idMezzi.push(...datiMezzi[nomeAlternativo]);
+            }
+        }
+    }
+
+    // Nessun mezzo trovato
+    if (idMezzi.length === 0) {
+
+        console.log(
+            `Nessun mezzo trovato per "${nomeMezzo}" o per le sue alternative.`
+        );
+    }
+
+    return idMezzi;
+}
+
+
+
+/**
+ * Restituisce un elenco di mezzi alternativi
+ * compatibili con quello richiesto.
+ */
+function ottieniMezziAlternativi(tipoMezzo) {
+
+    // Mappa dei mezzi equivalenti
+    const mappaAlternative = {
+
+        // Ricorda:
+        // le chiavi devono essere tutte in minuscolo
+
+        "ambulanza": [
+            "Ambulanza BLSD"
+        ],
+
+        "pattuglie": [
+            "Volante"
+        ],
+
+        "aps/abp": [
+            "ABP",
+            "APS"
+        ],
+
+        "aps/abp o unità polisoccorso": [
+            "ABP",
+            "APS"
+        ],
+
+        "aps/abp, unità polisoccorso o autoscale": [
+            "ABP",
+            "APS",
+            "AS"
+        ],
+
+        "pattuglie o veicoli della polizia locale": [
+            "Volante"
+        ],
+
+        "unità cinofila antidroga": [
+            "Unità cinofila antidroga"
+        ],
+
+        "ambulanze": [
+            "Ambulanza BLSD"
+        ],
+
+        "suv uopi": [
+            "UOPI Suv"
+        ],
+
+        "autoscale": [
+            "AS"
+        ],
+
+        "unità polisoccorso": [
+            "APS",
+            "AS"
+        ],
+
+        "furgone antisommossa": [
+            "Furgone Antisommossa"
+        ]
+    };
+
+    // Converte il nome in minuscolo per evitare problemi di confronto
+    tipoMezzo = tipoMezzo.toLowerCase();
+
+    // Restituisce le alternative oppure un array vuoto
+    return mappaAlternative[tipoMezzo] || [];
+}
+
+
+/**
+ * Conta quanti mezzi dello stesso tipo sono già presenti sulla missione.
+ *
+ * @param {Page} pagina
+ * @param {string} nomeMezzo
+ * @returns {number} Numero di mezzi già inviati
+ */
+async function contaMezziGiaSelezionati(pagina, nomeMezzo) {
+
+    // Contatore dei mezzi trovati
+    let totale = 0;
+
+    try {
+
+        // Recupera tutti i link dei mezzi già presenti sulla missione
+        const collegamenti = await pagina
+            .locator("table#mission_vehicle_at_mission td:nth-child(2) a")
+            .evaluateAll(elementi =>
+                elementi.map(elemento => elemento.href)
+            );
+
+        // Carica il database dei mezzi una sola volta
+        const fs = require("fs");
+
+        const datiMezzi = JSON.parse(
+            fs.readFileSync("data/vehicle_data.json", "utf8")
+        );
+
+        // Recupera il tipo alternativo del mezzo richiesto
+        const mezziAlternativi =
+            ottieniMezziAlternativi(nomeMezzo);
+
+        const mezzoDaConfrontare =
+            mezziAlternativi.length > 0
+                ? mezziAlternativi[0]
+                : nomeMezzo;
+
+        // Controlla ogni mezzo già presente
+        for (const collegamento of collegamenti) {
+
+            // Estrae l'ID del mezzo dall'URL
+            const idMezzo = collegamento.split("/")[4];
+
+            // Cerca a quale categoria appartiene
+            for (const [tipoMezzo, listaID] of Object.entries(datiMezzi)) {
+
+                if (listaID.includes(idMezzo)) {
+
+                    if (tipoMezzo === mezzoDaConfrontare) {
+
+                        totale++;
+                    }
+
+                    // L'ID appartiene ad una sola categoria
+                    break;
+                }
+            }
+        }
+
+    } catch (errore) {
+
+        console.log(
+            `Errore durante il controllo dei mezzi già presenti: ${errore}`
+        );
+    }
+
+    return totale;
 }
