@@ -1,0 +1,41 @@
+{
+    "130920642": {
+        "mission_name": "INCIDENTE CONTRO AUTO PARCHEGGIATA",
+        "credits": 120,
+        "vehicles": [
+            {
+                "name": "Pattuglie o Veicoli della Polizia Locale",
+                "count": 1
+            }
+        ],
+        "patients": 0,
+        "crashed_cars": 0,
+        "required_personnel": []
+    },
+    "130920682": {
+        "mission_name": "PASSEGGERO SENZA BIGLIETTO",
+        "credits": 120,
+        "vehicles": [
+            {
+                "name": "Pattuglie o Veicoli della Polizia Locale",
+                "count": 1
+            }
+        ],
+        "patients": 0,
+        "crashed_cars": 0,
+        "required_personnel": []
+    },
+    "130920724": {
+        "mission_name": "POSSESSO ILLEGALE DI ARMI - COLTELLO",
+        "credits": 1200,
+        "vehicles": [
+            {
+                "name": "Pattuglie",
+                "count": 2
+            }
+        ],
+        "patients": 0,
+        "crashed_cars": 0,
+        "required_personnel": []
+    }
+}
