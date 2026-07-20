@@ -61,7 +61,7 @@ var totaleVeicoli = 0;
         if (controlFirstLogin) {
             await login(page);
             controlFirstLogin = false;
-            // await assunzione(page);
+            await assunzione(page);
         }
 
         if (totaleVeicoli === 0) {
