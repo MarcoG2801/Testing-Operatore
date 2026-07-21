@@ -883,108 +883,147 @@ async function logicaMissioni(page) {
 }
 
 
-async function navigaEInviaMezzi(page) {
-
+async function navigaEInviaMezzi(page, idMissione) {
     // Controlla che il file delle missioni esista
     if (!fs.existsSync("data/mission_data.json")) {
         //console.log("Il file mission_data.json non esiste. Interruzione della funzione.");
         return;
     }
-
-    // Carica i dati delle missioni
     const datiMissioni = JSON.parse(
         fs.readFileSync("data/mission_data.json", "utf8")
     );
 
-    // Cicla tutte le missioni presenti nel file JSON
-    for (const [idMissione, dati] of Object.entries(datiMissioni)) {
+    const dati = datiMissioni[idMissione];
 
-        const nomeMissione = dati.mission_name || "Missione sconosciuta";
-        const autoIncidentate = dati.crashed_cars || 0;
-        const pazienti = dati.patients || 0;
+    if (!dati) {
+        console.log(`Missione ${idMissione} non trovata nel file.`);
+        return;
+    }
 
-        //console.log(
-        //    `Invio mezzi per ${nomeMissione} `
-        //);
+    const nomeMissione = dati.mission_name || "Missione sconosciuta";
+    const autoIncidentate = dati.crashed_cars || 0;
+    const pazienti = dati.patients || 0;
+
+    await page.goto(
+        `https://www.operatore112.it/missions/${idMissione}`
+    );
 
 
-        // Apre la pagina della missione
-        await page.goto(
-            `https://www.operatore112.it/missions/${idMissione}`
+    // Aspetta che la missione venga caricata
+    try {
+
+        await page.waitForSelector("#missionH1", {
+            timeout: 5000
+        });
+
+    } catch (errore) {
+
+        console.log(
+            `La missione ${idMissione} non è stata caricata in tempo. Saltata.`
         );
 
-
-        // Aspetta che la missione venga caricata
-        try {
-
-            await page.waitForSelector("#missionH1", {
-                timeout: 5000
-            });
-
-        } catch (errore) {
-
-            console.log(
-                `La missione ${idMissione} non è stata caricata in tempo. Saltata.`
-            );
-
-            continue;
-        }
+        return;
+    }
 
 
 
-        // Se ci sono mezzi mancanti disponibili, li carica
-        const pulsanteMezziMancanti = await page.$(
-            "a.missing_vehicles_load.btn-warning"
+    // Se ci sono mezzi mancanti disponibili, li carica
+    const pulsanteMezziMancanti = await page.$(
+        "a.missing_vehicles_load.btn-warning"
+    );
+
+    if (pulsanteMezziMancanti) {
+
+        await pulsanteMezziMancanti.click();
+
+        await page.waitForLoadState("networkidle");
+
+        console.log(
+            `Caricati mezzi aggiuntivi per la missione ${idMissione}`
         );
+    }
 
-        if (pulsanteMezziMancanti) {
 
-            await pulsanteMezziMancanti.click();
 
-            await page.waitForLoadState("networkidle");
+    // Gestione dei mezzi richiesti dalla missione
+    const richiesteMezzi = dati.vehicles || [];
 
-            console.log(
-                `Caricati mezzi aggiuntivi per la missione ${idMissione}`
+
+    for (const richiesta of richiesteMezzi) {
+
+        const nomeMezzo = richiesta.name;
+        const quantitaMezzo = richiesta.count;
+
+        /*
+            Caso speciale:
+            Il personale SWAT viene convertito in mezzi corazzati.
+            Ogni mezzo corazzato trasporta 6 operatori.
+        */
+        if (nomeMezzo.includes("SWAT Personnel")) {
+            const corazzatiNecessari = Math.floor(
+                quantitaMezzo / 6
             );
-        }
 
+            const idMezziCorazzati =
+                await trovaIDMezzi("SWAT Armoured Vehicle");
 
+            let selezionati = 0;
 
-        // Gestione dei mezzi richiesti dalla missione
-        const richiesteMezzi = dati.vehicles || [];
+            // Seleziona prima i mezzi corazzati
+            for (const idMezzo of idMezziCorazzati) {
+                if (selezionati >= corazzatiNecessari)
+                    break;
 
-
-        for (const richiesta of richiesteMezzi) {
-
-            const nomeMezzo = richiesta.name;
-            const quantitaMezzo = richiesta.count;
-
-            /*
-                Caso speciale:
-                Il personale SWAT viene convertito in mezzi corazzati.
-                Ogni mezzo corazzato trasporta 6 operatori.
-            */
-            if (nomeMezzo.includes("SWAT Personnel")) {
-                const corazzatiNecessari = Math.floor(
-                    quantitaMezzo / 6
+                const checkbox = await page.$(
+                    `input.vehicle_checkbox[value="${idMezzo}"]`
                 );
 
-                const idMezziCorazzati =
-                    await trovaIDMezzi("SWAT Armoured Vehicle");
 
-                let selezionati = 0;
-
-                // Seleziona prima i mezzi corazzati
-                for (const idMezzo of idMezziCorazzati) {
-                    if (selezionati >= corazzatiNecessari)
-                        break;
-
-                    const checkbox = await page.$(
-                        `input.vehicle_checkbox[value="${idMezzo}"]`
+                if (checkbox) {
+                    await page.evaluate(
+                        elemento => elemento.scrollIntoView(),
+                        checkbox
                     );
 
+                    await page.evaluate(
+                        elemento => {
+                            elemento.click();
+                            elemento.dispatchEvent(
+                                new Event("change", {
+                                    bubbles: true
+                                })
+                            );
+                        },
+                        checkbox
+                    );
+
+                    console.log(
+                        `Selezionato mezzo SWAT corazzato (${idMezzo})`
+                    );
+
+                    selezionati++;
+                }
+            }
+
+
+
+            // Se non bastano usa gli SUV SWAT
+            if (selezionati < corazzatiNecessari) {
+                const idSUVSWAT =
+                    await trovaIDMezzi("SWAT SUV");
+
+                for (const idSUV of idSUVSWAT) {
+
+                    if (selezionati >= quantitaMezzo)
+                        break;
+
+
+                    const checkbox = await page.$(
+                        `input.vehicle_checkbox[value="${idSUV}"]`
+                    );
 
                     if (checkbox) {
+
                         await page.evaluate(
                             elemento => elemento.scrollIntoView(),
                             checkbox
@@ -1003,313 +1042,198 @@ async function navigaEInviaMezzi(page) {
                         );
 
                         console.log(
-                            `Selezionato mezzo SWAT corazzato (${idMezzo})`
+                            `Selezionato SUV SWAT (${idSUV})`
                         );
 
                         selezionati++;
                     }
                 }
+            }
 
 
 
-                // Se non bastano usa gli SUV SWAT
-                if (selezionati < corazzatiNecessari) {
-                    const idSUVSWAT =
-                        await trovaIDMezzi("SWAT SUV");
-
-                    for (const idSUV of idSUVSWAT) {
-
-                        if (selezionati >= quantitaMezzo)
-                            break;
+        } else {
+            // Gestione normale dei mezzi
+            const idMezzi =
+                await trovaIDMezzi(nomeMezzo);
 
 
-                        const checkbox = await page.$(
-                            `input.vehicle_checkbox[value="${idSUV}"]`
+            if (!idMezzi || idMezzi.length === 0) {
+
+                console.log(
+                    `Tipo di mezzo '${nomeMezzo}' non trovato`
+                );
+
+                continue;
+            }
+
+
+
+            console.log(
+                `Selezione ${quantitaMezzo} mezzo/i ${nomeMezzo}`
+            );
+
+
+            // Conta eventuali mezzi già selezionati
+            let selezionati =
+                await contaMezziGiaSelezionati(
+                    page,
+                    nomeMezzo
+                );
+
+
+
+            const checkboxDisponibili =
+                await page.locator(
+                    "//input[contains(@id,'vehicle_checkbox')]"
+                ).all();
+
+
+            const valoriCheckbox = [];
+
+            // Recupera gli ID dei mezzi disponibili nella pagina
+            for (const checkbox of checkboxDisponibili) {
+
+                valoriCheckbox.push(
+                    await checkbox.getAttribute("value")
+                );
+            }
+
+            // Seleziona i mezzi necessari
+            for (const numero of valoriCheckbox) {
+
+
+                if (selezionati >= quantitaMezzo)
+                    break;
+
+
+
+                if (idMezzi.includes(numero)) {
+
+
+                    const checkbox =
+                        await page.$(
+                            `input.vehicle_checkbox[value="${numero}"]`
                         );
 
-                        if (checkbox) {
 
-                            await page.evaluate(
-                                elemento => elemento.scrollIntoView(),
-                                checkbox
-                            );
 
-                            await page.evaluate(
-                                elemento => {
-                                    elemento.click();
-                                    elemento.dispatchEvent(
-                                        new Event("change", {
-                                            bubbles: true
-                                        })
-                                    );
-                                },
-                                checkbox
-                            );
+                    if (checkbox) {
 
-                            console.log(
-                                `Selezionato SUV SWAT (${idSUV})`
-                            );
 
-                            selezionati++;
-                        }
+                        await page.evaluate(
+                            elemento => elemento.scrollIntoView(),
+                            checkbox
+                        );
+
+
+                        await page.evaluate(
+                            elemento => {
+
+                                elemento.click();
+
+                                elemento.dispatchEvent(
+                                    new Event("change", {
+                                        bubbles: true
+                                    })
+                                );
+
+                            },
+                            checkbox
+                        );
+
+
+
+                        console.log(
+                            `Selezionato ${nomeMezzo} (${numero})`
+                        );
+
+
+                        selezionati++;
                     }
                 }
+            }
+        }
+    }
 
 
 
-            } else {
-                // Gestione normale dei mezzi
-                const idMezzi =
-                    await trovaIDMezzi(nomeMezzo);
+
+    /*
+        Gestione delle auto incidentate:
+        - più di una auto -> servono trasportatori o carri attrezzi
+        - una sola auto -> basta un carro attrezzi
+    */
+
+    if (autoIncidentate > 1) {
 
 
-                if (!idMezzi || idMezzi.length === 0) {
+        const trasportatoriNecessari =
+            autoIncidentate - 2;
 
-                    console.log(
-                        `Tipo di mezzo '${nomeMezzo}' non trovato`
-                    );
 
-                    continue;
-                }
+        const idTrasportatori =
+            await trovaIDMezzi("Flatbed Carrier");
+
+
+        let selezionati = 0;
+
+
+
+        // Prova prima con i trasportatori
+        for (const idMezzo of idTrasportatori) {
+
+
+            if (selezionati >= trasportatoriNecessari)
+                break;
+
+
+
+            const checkbox = await page.$(
+                `input.vehicle_checkbox[value="${idMezzo}"]`
+            );
+
+
+
+            if (checkbox) {
+
+
+                await page.evaluate(
+                    elemento => elemento.scrollIntoView(),
+                    checkbox
+                );
+
+
+                await page.evaluate(
+                    elemento => {
+
+                        elemento.click();
+
+                        elemento.dispatchEvent(
+                            new Event("change", {
+                                bubbles: true
+                            })
+                        );
+
+                    },
+                    checkbox
+                );
 
 
 
                 console.log(
-                    `Selezione ${quantitaMezzo} mezzo/i ${nomeMezzo}`
+                    `Selezionato Flatbed Carrier (${idMezzo})`
                 );
 
 
-                // Conta eventuali mezzi già selezionati
-                let selezionati =
-                    await contaMezziGiaSelezionati(
-                        page,
-                        nomeMezzo
-                    );
-
-
-
-                const checkboxDisponibili =
-                    await page.locator(
-                        "//input[contains(@id,'vehicle_checkbox')]"
-                    ).all();
-
-
-                const valoriCheckbox = [];
-
-                // Recupera gli ID dei mezzi disponibili nella pagina
-                for (const checkbox of checkboxDisponibili) {
-
-                    valoriCheckbox.push(
-                        await checkbox.getAttribute("value")
-                    );
-                }
-
-                // Seleziona i mezzi necessari
-                for (const numero of valoriCheckbox) {
-
-
-                    if (selezionati >= quantitaMezzo)
-                        break;
-
-
-
-                    if (idMezzi.includes(numero)) {
-
-
-                        const checkbox =
-                            await page.$(
-                                `input.vehicle_checkbox[value="${numero}"]`
-                            );
-
-
-
-                        if (checkbox) {
-
-
-                            await page.evaluate(
-                                elemento => elemento.scrollIntoView(),
-                                checkbox
-                            );
-
-
-                            await page.evaluate(
-                                elemento => {
-
-                                    elemento.click();
-
-                                    elemento.dispatchEvent(
-                                        new Event("change", {
-                                            bubbles: true
-                                        })
-                                    );
-
-                                },
-                                checkbox
-                            );
-
-
-
-                            console.log(
-                                `Selezionato ${nomeMezzo} (${numero})`
-                            );
-
-
-                            selezionati++;
-                        }
-                    }
-                }
+                selezionati++;
             }
         }
 
 
 
-
-        /*
-            Gestione delle auto incidentate:
-            - più di una auto -> servono trasportatori o carri attrezzi
-            - una sola auto -> basta un carro attrezzi
-        */
-
-        if (autoIncidentate > 1) {
-
-
-            const trasportatoriNecessari =
-                autoIncidentate - 2;
-
-
-            const idTrasportatori =
-                await trovaIDMezzi("Flatbed Carrier");
-
-
-            let selezionati = 0;
-
-
-
-            // Prova prima con i trasportatori
-            for (const idMezzo of idTrasportatori) {
-
-
-                if (selezionati >= trasportatoriNecessari)
-                    break;
-
-
-
-                const checkbox = await page.$(
-                    `input.vehicle_checkbox[value="${idMezzo}"]`
-                );
-
-
-
-                if (checkbox) {
-
-
-                    await page.evaluate(
-                        elemento => elemento.scrollIntoView(),
-                        checkbox
-                    );
-
-
-                    await page.evaluate(
-                        elemento => {
-
-                            elemento.click();
-
-                            elemento.dispatchEvent(
-                                new Event("change", {
-                                    bubbles: true
-                                })
-                            );
-
-                        },
-                        checkbox
-                    );
-
-
-
-                    console.log(
-                        `Selezionato Flatbed Carrier (${idMezzo})`
-                    );
-
-
-                    selezionati++;
-                }
-            }
-
-
-
-            // Se mancano mezzi usa i carri attrezzi
-            if (selezionati < trasportatoriNecessari) {
-
-
-                const tipiCarroAttrezzi = [
-                    "Wrecker",
-                    "Police Wrecker",
-                    "Fire Wrecker"
-                ];
-
-
-
-                for (const tipo of tipiCarroAttrezzi) {
-
-
-                    const idCarri =
-                        await trovaIDMezzi(tipo);
-
-
-
-                    for (const idMezzo of idCarri) {
-
-
-                        if (selezionati >= trasportatoriNecessari)
-                            break;
-
-
-
-                        const checkbox =
-                            await page.$(
-                                `input.vehicle_checkbox[value="${idMezzo}"]`
-                            );
-
-
-
-                        if (checkbox) {
-
-                            await page.evaluate(
-                                elemento => elemento.scrollIntoView(),
-                                checkbox
-                            );
-
-
-                            await page.evaluate(
-                                elemento => {
-
-                                    elemento.click();
-
-                                    elemento.dispatchEvent(
-                                        new Event("change", {
-                                            bubbles: true
-                                        })
-                                    );
-
-                                },
-                                checkbox
-                            );
-
-
-                            console.log(
-                                `Selezionato ${tipo} (${idMezzo})`
-                            );
-
-
-                            selezionati++;
-                        }
-                    }
-                }
-            }
-
-
-
-        } else if (autoIncidentate === 1) {
+        // Se mancano mezzi usa i carri attrezzi
+        if (selezionati < trasportatoriNecessari) {
 
 
             const tipiCarroAttrezzi = [
@@ -1319,11 +1243,7 @@ async function navigaEInviaMezzi(page) {
             ];
 
 
-            let selezionati = 0;
 
-
-
-            // Cerca un qualsiasi carro attrezzi
             for (const tipo of tipiCarroAttrezzi) {
 
 
@@ -1335,7 +1255,7 @@ async function navigaEInviaMezzi(page) {
                 for (const idMezzo of idCarri) {
 
 
-                    if (selezionati >= 1)
+                    if (selezionati >= trasportatoriNecessari)
                         break;
 
 
@@ -1348,7 +1268,6 @@ async function navigaEInviaMezzi(page) {
 
 
                     if (checkbox) {
-
 
                         await page.evaluate(
                             elemento => elemento.scrollIntoView(),
@@ -1381,84 +1300,159 @@ async function navigaEInviaMezzi(page) {
                     }
                 }
             }
+        }
 
 
 
-            // Se non trova carri attrezzi usa un trasportatore
-            if (selezionati === 0) {
+    } else if (autoIncidentate === 1) {
 
 
-                const trasportatori =
-                    await trovaIDMezzi("Flatbed Carrier");
+        const tipiCarroAttrezzi = [
+            "Wrecker",
+            "Police Wrecker",
+            "Fire Wrecker"
+        ];
 
 
-                if (trasportatori.length > 0) {
+        let selezionati = 0;
 
 
-                    const checkbox =
-                        await page.$(
-                            `input.vehicle_checkbox[value="${trasportatori[0]}"]`
-                        );
+
+        // Cerca un qualsiasi carro attrezzi
+        for (const tipo of tipiCarroAttrezzi) {
 
 
-                    if (checkbox) {
+            const idCarri =
+                await trovaIDMezzi(tipo);
 
 
-                        await page.evaluate(
-                            elemento => elemento.scrollIntoView(),
-                            checkbox
-                        );
+
+            for (const idMezzo of idCarri) {
 
 
-                        await page.evaluate(
-                            elemento => {
-
-                                elemento.click();
-
-                                elemento.dispatchEvent(
-                                    new Event("change", {
-                                        bubbles: true
-                                    })
-                                );
-
-                            },
-                            checkbox
-                        );
+                if (selezionati >= 1)
+                    break;
 
 
-                        console.log(
-                            `Selezionato Flatbed Carrier (${trasportatori[0]})`
-                        );
-                    }
+
+                const checkbox =
+                    await page.$(
+                        `input.vehicle_checkbox[value="${idMezzo}"]`
+                    );
+
+
+
+                if (checkbox) {
+
+
+                    await page.evaluate(
+                        elemento => elemento.scrollIntoView(),
+                        checkbox
+                    );
+
+
+                    await page.evaluate(
+                        elemento => {
+
+                            elemento.click();
+
+                            elemento.dispatchEvent(
+                                new Event("change", {
+                                    bubbles: true
+                                })
+                            );
+
+                        },
+                        checkbox
+                    );
+
+
+                    console.log(
+                        `Selezionato ${tipo} (${idMezzo})`
+                    );
+
+
+                    selezionati++;
                 }
             }
         }
 
 
 
-        // Invia la missione
-        const pulsanteInvio =
-            await page.$("#alert_btn");
+        // Se non trova carri attrezzi usa un trasportatore
+        if (selezionati === 0) {
 
 
-        if (pulsanteInvio) {
+            const trasportatori =
+                await trovaIDMezzi("Flatbed Carrier");
 
 
-            await pulsanteInvio.click();
+            if (trasportatori.length > 0) {
 
 
-            console.log(
-                `Mezzi inviati per missione ${idMissione}`
-            );
+                const checkbox =
+                    await page.$(
+                        `input.vehicle_checkbox[value="${trasportatori[0]}"]`
+                    );
 
 
-        } else {
+                if (checkbox) {
 
 
-            console.log(
-                `Pulsante invio non trovato per missione ${idMissione}`
-            );
+                    await page.evaluate(
+                        elemento => elemento.scrollIntoView(),
+                        checkbox
+                    );
+
+
+                    await page.evaluate(
+                        elemento => {
+
+                            elemento.click();
+
+                            elemento.dispatchEvent(
+                                new Event("change", {
+                                    bubbles: true
+                                })
+                            );
+
+                        },
+                        checkbox
+                    );
+
+
+                    console.log(
+                        `Selezionato Flatbed Carrier (${trasportatori[0]})`
+                    );
+                }
+            }
         }
+    }
+
+
+
+    // Invia la missione
+    const pulsanteInvio =
+        await page.$("#alert_btn");
+
+
+    if (pulsanteInvio) {
+
+
+        await pulsanteInvio.click();
+
+
+        console.log(
+            `Mezzi inviati per missione ${idMissione}`
+        );
+
+
+    } else {
+
+
+        console.log(
+            `Pulsante invio non trovato per missione ${idMissione}`
+        );
     }
 }
 
