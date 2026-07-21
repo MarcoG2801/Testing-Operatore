@@ -2,7 +2,7 @@ FROM mcr.microsoft.com/playwright:v1.55.0-jammy
 
 WORKDIR /app
 
-COPY package*.json ./
+COPY package-lock.json package-lock.json
 RUN npm install
 
 COPY . .
