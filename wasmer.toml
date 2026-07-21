@@ -1,0 +1,8 @@
+[package]
+name = "MarcoG2801/testing-operatore"
+version = "0.1.0"
+description = "App con Playwright"
+
+[build]
+# Dici a Wasmer di usare direttamente il Dockerfile personalizzato
+dockerfile = "Dockerfile"
