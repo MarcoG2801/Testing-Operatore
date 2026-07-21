@@ -43,11 +43,10 @@ var totaleVeicoli = 0;
 
 // Main
 (async () => {
-    console.log("Loop Playwright avviato.");
-
     console.log("---------------------------------------");
     console.log(new Date().toISOString());
     console.log("Avvio browser...");
+    console.log("---------------------------------------");
 
     browser = await chromium.launch({
         headless: true
@@ -71,8 +70,6 @@ var totaleVeicoli = 0;
 
         await controllaDatiMissioni(page);
 
-        // 1. controllo tutte le missioni rosse
-        await logicaTrasporto(page);
 
         // 2. solo dopo invio i mezzi
         await logicaMissioni(page);
@@ -98,7 +95,7 @@ async function renderWakeUp() {
 
 //Login 
 async function login(page) {
-    console.log('Eseguo login...');
+    console.log('Eseguo login.....');
 
     try {
         await page.goto("https://www.operatore112.it/users/sign_in");
@@ -128,7 +125,6 @@ async function login(page) {
             // Il messaggio non è comparso: login riuscito
             console.log(chalk.green("✔ Login riuscito"));
         }
-
     } catch (e) {
         console.error(chalk.red('Thread ${threadId} encountered an error:'), e);
     }
@@ -195,7 +191,7 @@ async function raccogliDatiVeicoli(page) {
                 // Salva l'ID nell'array
                 idVeicoli.push(idVeicolo);
 
-                console.log(`Trovato ID veicolo: ${idVeicolo}`);
+                //console.log(`Trovato ID veicolo: ${idVeicolo}`);
             }
         }
 
@@ -299,7 +295,6 @@ async function controllaDatiMissioni(page) {
         }
 
         if (pannelliMissione.length === 0) {
-            console.log("Nessuna missione trovata");
             return;
         }
 
@@ -551,10 +546,11 @@ async function logicaTrasporto(page) {
 
 
 async function gestisciTrasportoMissione(page, idMissione) {
-    console.log("Avvio logica trasporto.");
 
     try {
-        console.log("Controllo richieste di trasporto.");
+
+        console.log("CONTROLLO RICHIESTE DI TRASPORTO");
+
 
         // ---------------------------
         // CONTROLLO PAZIENTI
@@ -568,8 +564,6 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
         const numeroLink = await linkTrasporto.count();
 
-        console.log(numeroLink);
-
         if (numeroLink !== 0) {
 
             for (let i = 0; i < numeroLink; i++) {
@@ -579,11 +573,7 @@ async function gestisciTrasportoMissione(page, idMissione) {
                 const href = await link.getAttribute("href");
                 const testo = await link.innerText();
 
-                console.log(`Link trovato ${i + 1}: ${testo} -> ${href}`);
-
                 await page.goto(`https://www.operatore112.it${href}`);
-
-                console.log(`URL attuale: ${page.url()}`);
 
                 const distanzaKm = (testo) => {
 
@@ -604,8 +594,7 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
                     return valore;
                 };
-                console.log("CIAOOOOOO");
-                console.log("Distanza estratta:", distanzaKm(testo), "km");
+
 
                 try {
 
@@ -624,14 +613,10 @@ async function gestisciTrasportoMissione(page, idMissione) {
                     let rigaAlleanza;
 
                     if (esisteTuoOspedale) {
-                        console.log("Controllo tuo ospedale...");
+                        //console.log("Controllo tuo ospedale...");
 
                         rigaTuoOspedale = righeTuoOspedale.first();
 
-                        console.log(
-                            "Riga tuo ospedale:",
-                            await rigaTuoOspedale.innerHTML()
-                        );
 
                         const distanzaTuo = await rigaTuoOspedale
                             .locator("td")
@@ -640,7 +625,7 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
                         kmTuo = distanzaKm(distanzaTuo);
 
-                        console.log(`Tuo ospedale: ${kmTuo} km`);
+                        //console.log(`Tuo ospedale: ${kmTuo} km`);
                     } else {
                         console.log("Nessun tuo ospedale disponibile.");
                     }
@@ -650,19 +635,12 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
                         rigaAlleanza = righeAlleanza.first();
 
-                        console.log(
-                            "Riga ospedale alleanza:",
-                            await rigaAlleanza.innerHTML()
-                        );
-
                         const distanzaAlleanza = await rigaAlleanza
                             .locator("td")
                             .nth(1)
                             .innerText();
 
                         kmAlleanza = distanzaKm(distanzaAlleanza);
-
-                        console.log(`Ospedale alleanza: ${kmAlleanza} km`);
                     } else {
                         console.log("Nessun ospedale alleanza disponibile.");
                     }
@@ -671,9 +649,9 @@ async function gestisciTrasportoMissione(page, idMissione) {
                         console.log("Nessun ospedale disponibile per il trasporto.");
                     } else if (kmTuo <= kmAlleanza) {
 
-                        console.log(
-                            `Il tuo ospedale è più vicino di ${(kmAlleanza - kmTuo).toFixed(2)} km`
-                        );
+                        //console.log(
+                        //  `Il tuo ospedale è più vicino di ${(kmAlleanza - kmTuo).toFixed(2)} km`
+                        //);
 
                         await rigaTuoOspedale
                             .getByRole("link", { name: "Trasporta paziente" })
@@ -681,9 +659,9 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
                     } else {
 
-                        console.log(
-                            `L'ospedale alleanza è più vicino di ${(kmTuo - kmAlleanza).toFixed(2)} km`
-                        );
+                        //console.log(
+                        //  `L'ospedale alleanza è più vicino di ${(kmTuo - kmAlleanza).toFixed(2)} km`
+                        //);
 
                         await rigaAlleanza
                             .getByRole("link", { name: "Trasporta paziente" })
@@ -692,7 +670,7 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
                     await page.waitForTimeout(2000);
 
-                    console.log("Trasporto effettuato.");
+                    console.log("TRASPORTO ESEGUITO CON SUCCESSO");
 
                     await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
 
@@ -706,7 +684,7 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
         } else {
 
-            console.log("Nessun paziente.");
+            //console.log("Nessun paziente.");
 
             // ---------------------------
             // CONTROLLO DETENUTI
@@ -769,12 +747,11 @@ async function gestisciTrasportoMissione(page, idMissione) {
                     (a, b) => a.distanza - b.distanza
                 );
 
-                console.log("Destinazioni ordinate:");
 
                 destinazioni.forEach(dest => {
-                    console.log(
-                        `${dest.distanza.toFixed(3)} km -> ${dest.testo}`
-                    );
+                    //console.log(
+                    //    `${dest.distanza.toFixed(3)} km -> ${dest.testo}`
+                    //);
                 });
 
                 if (destinazioni.length > 0) {
@@ -821,7 +798,8 @@ async function logicaMissioni(page) {
 
     // Controlla che esista il file delle missioni
     if (!fs.existsSync(fileMissioni)) {
-        console.log("File mission_data.json non trovato.");
+        // Il File non esiste (probabilmente non ci sono missioni da gestire)
+        //console.log("NON CI SONO MISSIONI DA GESTIRE.");
         return;
     }
 
@@ -909,7 +887,7 @@ async function navigaEInviaMezzi(page) {
 
     // Controlla che il file delle missioni esista
     if (!fs.existsSync("data/mission_data.json")) {
-        console.log("Il file mission_data.json non esiste. Interruzione della funzione.");
+        //console.log("Il file mission_data.json non esiste. Interruzione della funzione.");
         return;
     }
 
@@ -925,11 +903,9 @@ async function navigaEInviaMezzi(page) {
         const autoIncidentate = dati.crashed_cars || 0;
         const pazienti = dati.patients || 0;
 
-        console.log(
-            `Invio mezzi per ${nomeMissione} 
-            (Auto incidentate: ${autoIncidentate}) 
-            (Pazienti: ${pazienti})`
-        );
+        //console.log(
+        //    `Invio mezzi per ${nomeMissione} `
+        //);
 
 
         // Apre la pagina della missione
@@ -983,35 +959,25 @@ async function navigaEInviaMezzi(page) {
             const nomeMezzo = richiesta.name;
             const quantitaMezzo = richiesta.count;
 
-
-
             /*
                 Caso speciale:
                 Il personale SWAT viene convertito in mezzi corazzati.
                 Ogni mezzo corazzato trasporta 6 operatori.
             */
             if (nomeMezzo.includes("SWAT Personnel")) {
-
-
                 const corazzatiNecessari = Math.floor(
                     quantitaMezzo / 6
                 );
 
-
                 const idMezziCorazzati =
                     await trovaIDMezzi("SWAT Armoured Vehicle");
 
-
                 let selezionati = 0;
-
 
                 // Seleziona prima i mezzi corazzati
                 for (const idMezzo of idMezziCorazzati) {
-
-
                     if (selezionati >= corazzatiNecessari)
                         break;
-
 
                     const checkbox = await page.$(
                         `input.vehicle_checkbox[value="${idMezzo}"]`
@@ -1019,12 +985,10 @@ async function navigaEInviaMezzi(page) {
 
 
                     if (checkbox) {
-
                         await page.evaluate(
                             elemento => elemento.scrollIntoView(),
                             checkbox
                         );
-
 
                         await page.evaluate(
                             elemento => {
@@ -1038,7 +1002,6 @@ async function navigaEInviaMezzi(page) {
                             checkbox
                         );
 
-
                         console.log(
                             `Selezionato mezzo SWAT corazzato (${idMezzo})`
                         );
@@ -1051,14 +1014,10 @@ async function navigaEInviaMezzi(page) {
 
                 // Se non bastano usa gli SUV SWAT
                 if (selezionati < corazzatiNecessari) {
-
-
                     const idSUVSWAT =
                         await trovaIDMezzi("SWAT SUV");
 
-
                     for (const idSUV of idSUVSWAT) {
-
 
                         if (selezionati >= quantitaMezzo)
                             break;
@@ -1068,15 +1027,12 @@ async function navigaEInviaMezzi(page) {
                             `input.vehicle_checkbox[value="${idSUV}"]`
                         );
 
-
                         if (checkbox) {
-
 
                             await page.evaluate(
                                 elemento => elemento.scrollIntoView(),
                                 checkbox
                             );
-
 
                             await page.evaluate(
                                 elemento => {
@@ -1090,11 +1046,9 @@ async function navigaEInviaMezzi(page) {
                                 checkbox
                             );
 
-
                             console.log(
                                 `Selezionato SUV SWAT (${idSUV})`
                             );
-
 
                             selezionati++;
                         }
@@ -1104,12 +1058,9 @@ async function navigaEInviaMezzi(page) {
 
 
             } else {
-
-
                 // Gestione normale dei mezzi
                 const idMezzi =
                     await trovaIDMezzi(nomeMezzo);
-
 
 
                 if (!idMezzi || idMezzi.length === 0) {
@@ -1143,9 +1094,7 @@ async function navigaEInviaMezzi(page) {
                     ).all();
 
 
-
                 const valoriCheckbox = [];
-
 
                 // Recupera gli ID dei mezzi disponibili nella pagina
                 for (const checkbox of checkboxDisponibili) {
@@ -1154,8 +1103,6 @@ async function navigaEInviaMezzi(page) {
                         await checkbox.getAttribute("value")
                     );
                 }
-
-
 
                 // Seleziona i mezzi necessari
                 for (const numero of valoriCheckbox) {
@@ -1698,17 +1645,16 @@ async function contaMezziGiaSelezionati(pagina, nomeMezzo) {
             // Estrae l'ID del mezzo dall'URL
             const idMezzo = collegamento.split("/")[4];
 
-            // Cerca a quale categoria appartiene
             for (const [tipoMezzo, listaID] of Object.entries(datiMezzi)) {
 
-                if (listaID.includes(idMezzo)) {
+                if (!tipiCompatibili.includes(tipoMezzo))
+                    continue;
 
-                    if (tipiCompatibili.includes(tipoMezzo)) {
-                        totale++;
-                    }
-                    // L'ID appartiene ad una sola categoria
+                if (listaID.includes(idMezzo)) {
+                    totale++;
                     break;
                 }
+
             }
         }
 
