@@ -71,6 +71,10 @@ var totaleVeicoli = 0;
 
         await controllaDatiMissioni(page);
 
+        // 1. controllo tutte le missioni rosse
+        await logicaTrasporto(page);
+
+        // 2. solo dopo invio i mezzi
         await logicaMissioni(page);
 
         console.log("Attendo 5 secondi...");
@@ -350,11 +354,6 @@ async function raccogliInfoMissioni(idMissioni, page) {
             const nomeMissione = (await elementoNome.innerText()).trim();
 
 
-            /////dfdsfdfdfdf
-            /////sdfsdfs
-            //dfsfd
-
-            logicaTrasporto(page, idMissione);
 
             const pazienti = await page.locator("//div[contains(@class,'mission_patient')]").count();
 
@@ -531,7 +530,27 @@ function rimuoviPlurale(nomeVeicolo) {
 }
 
 
-async function logicaTrasporto(page, idMissione) {
+async function logicaTrasporto(page) {
+
+    if (!fs.existsSync("data/mission_data.json"))
+        return;
+
+    const datiMissioni = JSON.parse(
+        fs.readFileSync("data/mission_data.json", "utf8")
+    );
+
+    for (const idMissione of Object.keys(datiMissioni)) {
+
+        await page.goto(
+            `https://www.operatore112.it/missions/${idMissione}`
+        );
+
+        await gestisciTrasportoMissione(page, idMissione);
+    }
+}
+
+
+async function gestisciTrasportoMissione(page, idMissione) {
     console.log("Avvio logica trasporto.");
 
     try {
@@ -795,10 +814,94 @@ async function logicaTrasporto(page, idMissione) {
 
 
 async function logicaMissioni(page) {
-    console.log("Inizio Logica Missioni");
 
-    console.log("Naviga e Smistamento Missioni")
-    await navigaEInviaMezzi(page)
+    console.log("====================================");
+    console.log("AVVIO LOGICA MISSIONI");
+    console.log("====================================");
+
+    // Controlla che esista il file delle missioni
+    if (!fs.existsSync(fileMissioni)) {
+        console.log("File mission_data.json non trovato.");
+        return;
+    }
+
+    // Carica le missioni
+    const datiMissioni = JSON.parse(
+        fs.readFileSync(fileMissioni, "utf8")
+    );
+
+    const elencoMissioni = Object.keys(datiMissioni);
+
+    if (elencoMissioni.length === 0) {
+        console.log("Nessuna missione da gestire.");
+        return;
+    }
+
+    console.log(`Missioni da elaborare: ${elencoMissioni.length}`);
+
+    // Cicla tutte le missioni
+    for (const idMissione of elencoMissioni) {
+
+        console.log("------------------------------------");
+        console.log(`Missione ${idMissione}`);
+        console.log("------------------------------------");
+
+        try {
+
+            // Apro la missione
+            await page.goto(
+                `https://www.operatore112.it/missions/${idMissione}`
+            );
+
+            await page.waitForSelector("#missionH1", {
+                timeout: 5000
+            });
+
+            //-------------------------------------------------
+            // PRIMA CONTROLLO TRASPORTI
+            //-------------------------------------------------
+
+            const trasportoEseguito =
+                await logicaTrasporto(page, idMissione);
+
+            /*
+                Se logicaTrasporto() restituisce true significa
+                che ha trovato almeno un trasporto da effettuare.
+
+                In quel caso NON inviamo altri mezzi e passiamo
+                direttamente alla missione successiva.
+            */
+
+            if (trasportoEseguito) {
+
+                console.log(
+                    "Missione saltata: era presente un trasporto."
+                );
+
+                continue;
+            }
+
+            //-------------------------------------------------
+            // POI INVIO I MEZZI
+            //-------------------------------------------------
+
+            await navigaEInviaMezzi(page, idMissione);
+
+        }
+        catch (err) {
+
+            console.log(
+                `Errore gestione missione ${idMissione}:`,
+                err
+            );
+
+            continue;
+        }
+    }
+
+    console.log("====================================");
+    console.log("LOGICA MISSIONI TERMINATA");
+    console.log("====================================");
 }
 
 
@@ -1418,52 +1521,69 @@ async function navigaEInviaMezzi(page) {
  */
 async function trovaIDMezzi(nomeMezzo) {
 
-    // Carica il file contenente tutti gli ID dei mezzi
+    // Carica il database dei mezzi
     const datiMezzi = JSON.parse(
-        fs.readFileSync("data/vehicle_data.json", "utf8")
+        fs.readFileSync(fileVeicoli, "utf8")
     );
 
-    // Array che conterrà tutti gli ID trovati
+    // Tutti i mezzi compatibili
+    const tipiCompatibili = get_vehicle_options(nomeMezzo);
+
     const idMezzi = [];
 
-    // Se il mezzo esiste nel file JSON aggiunge i suoi ID
-    if (nomeMezzo in datiMezzi) {
+    console.log(`Ricerca mezzi per: ${nomeMezzo}`);
 
-        idMezzi.push(...datiMezzi[nomeMezzo]);
-    }
+    console.log(
+        "Tipi compatibili:",
+        tipiCompatibili.join(", ")
+    );
 
-    console.log("Ricerca mezzo:", nomeMezzo);
+    // Recupera tutti gli ID appartenenti ai mezzi compatibili
+    for (const tipo of tipiCompatibili) {
 
-    // Recupera eventuali mezzi alternativi
-    const mezziAlternativi = ottieniMezziAlternativi(nomeMezzo);
+        if (!datiMezzi[tipo]) {
+            continue;
+        }
 
-    if (mezziAlternativi.length > 0) {
+        for (const id of datiMezzi[tipo]) {
 
-        console.log(
-            `Ricerca alternative per "${nomeMezzo}": ${mezziAlternativi.join(", ")}`
-        );
-
-        // Aggiunge gli ID di tutti i mezzi alternativi
-        for (const nomeAlternativo of mezziAlternativi) {
-
-            if (nomeAlternativo in datiMezzi) {
-
-                idMezzi.push(...datiMezzi[nomeAlternativo]);
+            if (!idMezzi.includes(id)) {
+                idMezzi.push(id);
             }
         }
     }
 
-    // Nessun mezzo trovato
     if (idMezzi.length === 0) {
 
         console.log(
-            `Nessun mezzo trovato per "${nomeMezzo}" o per le sue alternative.`
+            `Nessun mezzo trovato per "${nomeMezzo}".`
+        );
+
+    } else {
+
+        console.log(
+            `${idMezzi.length} mezzi trovati.`
         );
     }
 
     return idMezzi;
 }
 
+function get_vehicle_options(nomeMezzo) {
+
+    const opzioni = [nomeMezzo];
+
+    const alternative = ottieniMezziAlternativi(nomeMezzo);
+
+    for (const mezzo of alternative) {
+
+        if (!opzioni.includes(mezzo)) {
+            opzioni.push(mezzo);
+        }
+    }
+
+    return opzioni;
+}
 
 
 /**
@@ -1570,13 +1690,7 @@ async function contaMezziGiaSelezionati(pagina, nomeMezzo) {
         );
 
         // Recupera il tipo alternativo del mezzo richiesto
-        const mezziAlternativi =
-            ottieniMezziAlternativi(nomeMezzo);
-
-        const mezzoDaConfrontare =
-            mezziAlternativi.length > 0
-                ? mezziAlternativi[0]
-                : nomeMezzo;
+        const tipiCompatibili = get_vehicle_options(nomeMezzo);
 
         // Controlla ogni mezzo già presente
         for (const collegamento of collegamenti) {
@@ -1589,11 +1703,9 @@ async function contaMezziGiaSelezionati(pagina, nomeMezzo) {
 
                 if (listaID.includes(idMezzo)) {
 
-                    if (tipoMezzo === mezzoDaConfrontare) {
-
+                    if (tipiCompatibili.includes(tipoMezzo)) {
                         totale++;
                     }
-
                     // L'ID appartiene ad una sola categoria
                     break;
                 }
