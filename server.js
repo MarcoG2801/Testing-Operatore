@@ -545,6 +545,46 @@ async function logicaTrasporto(page) {
 }
 
 
+// 1. Funzione Helper per convertire il testo della distanza in numero (Km)
+function distanzaKm(testo) {
+    testo = testo
+        .toLowerCase()
+        .replace(",", ".")
+        .trim();
+
+    const valore = parseFloat(testo.replace(/[^\d.]/g, ""));
+
+    if (testo.includes("km")) return valore;
+    if (testo.includes("m")) return valore / 1000;
+
+    return valore;
+}
+
+// 2. Helper per trovare la prima riga VALIDA (con posti letto > 0)
+async function trovaOspedaleValido(locatorRighe) {
+    const totaleRighe = await locatorRighe.count();
+
+    for (let i = 0; i < totaleRighe; i++) {
+        const riga = locatorRighe.nth(i);
+
+        // Estrae il testo della colonna "Posti letto disponibili" (3° TD)
+        const testoPosti = await riga.locator("td").nth(2).innerText();
+
+        // Esempio "10 / 10" -> prende il "10"
+        const postiDisponibili = parseInt(testoPosti.split("/")[0].trim());
+
+        if (postiDisponibili > 0) {
+            const distanzaTesto = await riga.locator("td").nth(1).innerText();
+            return {
+                riga: riga,
+                distanza: distanzaKm(distanzaTesto) // Ora distanzaKm è visibile!
+            };
+        }
+    }
+    return null; // Nessun ospedale disponibile con posti liberi
+}
+
+
 async function gestisciTrasportoMissione(page, idMissione) {
 
     try {
@@ -597,82 +637,42 @@ async function gestisciTrasportoMissione(page, idMissione) {
 
 
                 try {
+                    try {
+                        console.log("Controllo ospedali disponibili...");
 
-                    console.log("Controllo ospedali disponibili...");
+                        const righeTuoOspedale = page.locator("#own-hospitals tbody tr");
+                        const righeAlleanza = page.locator("#alliance-hospitals tbody tr");
 
-                    const righeTuoOspedale = page.locator("#own-hospitals tbody tr");
-                    const righeAlleanza = page.locator("#alliance-hospitals tbody tr");
+                        // Cerca il primo ospedale valido con posti letto > 0
+                        const migliorTuo = await trovaOspedaleValido(righeTuoOspedale);
+                        const migliorAlleanza = await trovaOspedaleValido(righeAlleanza);
 
-                    const esisteTuoOspedale = await righeTuoOspedale.count() > 0;
-                    const esisteAlleanza = await righeAlleanza.count() > 0;
+                        let kmTuo = migliorTuo ? migliorTuo.distanza : Number.POSITIVE_INFINITY;
+                        let kmAlleanza = migliorAlleanza ? migliorAlleanza.distanza : Number.POSITIVE_INFINITY;
 
-                    let kmTuo = Number.POSITIVE_INFINITY;
-                    let kmAlleanza = Number.POSITIVE_INFINITY;
+                        if (!migliorTuo && !migliorAlleanza) {
+                            console.log("Nessun ospedale con posti letto liberi disponibile.");
+                        } else if (kmTuo <= kmAlleanza) {
+                            console.log(`Trasporto verso ospedale proprio (${kmTuo} km)...`);
+                            await migliorTuo.riga
+                                .getByRole("link", { name: "Trasporta paziente" })
+                                .click();
+                        } else {
+                            console.log(`Trasporto verso ospedale alleanza (${kmAlleanza} km)...`);
+                            await migliorAlleanza.riga
+                                .getByRole("link", { name: "Trasporta paziente" })
+                                .click();
+                        }
 
-                    let rigaTuoOspedale;
-                    let rigaAlleanza;
+                        await page.waitForTimeout(2000);
+                        console.log("TRASPORTO ESEGUITO CON SUCCESSO");
 
-                    if (esisteTuoOspedale) {
-                        //console.log("Controllo tuo ospedale...");
+                        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
 
-                        rigaTuoOspedale = righeTuoOspedale.first();
-
-
-                        const distanzaTuo = await rigaTuoOspedale
-                            .locator("td")
-                            .nth(1)
-                            .innerText();
-
-                        kmTuo = distanzaKm(distanzaTuo);
-
-                        //console.log(`Tuo ospedale: ${kmTuo} km`);
-                    } else {
-                        console.log("Nessun tuo ospedale disponibile.");
+                    } catch (err) {
+                        console.log("Errore trasporto:", err);
+                        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
                     }
-
-                    if (esisteAlleanza) {
-                        console.log("Controllo ospedale alleanza...");
-
-                        rigaAlleanza = righeAlleanza.first();
-
-                        const distanzaAlleanza = await rigaAlleanza
-                            .locator("td")
-                            .nth(1)
-                            .innerText();
-
-                        kmAlleanza = distanzaKm(distanzaAlleanza);
-                    } else {
-                        console.log("Nessun ospedale alleanza disponibile.");
-                    }
-
-                    if (!esisteTuoOspedale && !esisteAlleanza) {
-                        console.log("Nessun ospedale disponibile per il trasporto.");
-                    } else if (kmTuo <= kmAlleanza) {
-
-                        //console.log(
-                        //  `Il tuo ospedale è più vicino di ${(kmAlleanza - kmTuo).toFixed(2)} km`
-                        //);
-
-                        await rigaTuoOspedale
-                            .getByRole("link", { name: "Trasporta paziente" })
-                            .click();
-
-                    } else {
-
-                        //console.log(
-                        //  `L'ospedale alleanza è più vicino di ${(kmTuo - kmAlleanza).toFixed(2)} km`
-                        //);
-
-                        await rigaAlleanza
-                            .getByRole("link", { name: "Trasporta paziente" })
-                            .click();
-                    }
-
-                    await page.waitForTimeout(2000);
-
-                    console.log("TRASPORTO ESEGUITO CON SUCCESSO");
-
-                    await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
 
                 } catch (err) {
 
