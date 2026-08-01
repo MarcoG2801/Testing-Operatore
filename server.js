@@ -63,6 +63,16 @@ var totaleVeicoli = 0;
     });
     const page = await browser.newPage();
 
+    // Intercetta e blocca risorse non necessarie
+    await page.route('**/*', (route) => {
+        const resourceType = route.request().resourceType();
+        if (['image', 'stylesheet', 'font', 'media'].includes(resourceType)) {
+            route.abort();
+        } else {
+            route.continue();
+        }
+    });
+
     while (true) {
         // Renderizzo la pagina per evitare che il server si spenga
         //await renderWakeUp();
