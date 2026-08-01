@@ -54,8 +54,6 @@ var totaleVeicoli = 0;
     const page = await browser.newPage();
 
     while (true) {
-        // Renderizzo la pagina per evitare che il server si spenga
-        await renderWakeUp();
 
         if (controlFirstLogin) {
             await login(page);
@@ -83,15 +81,6 @@ var totaleVeicoli = 0;
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
-
-
-// Funzione che serve per non far spegnere il server (richiaamo il sito così non si spegne)
-async function renderWakeUp() {
-    setInterval(() => {
-        https.get("https://testing-operatore.onrender.com");
-    }, 60000);
-}
-
 
 //Login 
 async function login(page) {
