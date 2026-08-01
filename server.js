@@ -49,13 +49,23 @@ var totaleVeicoli = 0;
     console.log("---------------------------------------");
 
     browser = await chromium.launch({
-        headless: true
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage', // Usa /tmp invece di /dev/shm per evitare crash di memoria
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--disable-gpu',
+            '--single-process' // Utilizza un unico processo (riduce notevolmente la RAM, usalo con cautela)
+        ]
     });
     const page = await browser.newPage();
 
     while (true) {
         // Renderizzo la pagina per evitare che il server si spenga
-        await renderWakeUp();
+        //await renderWakeUp();
 
         if (controlFirstLogin) {
             await login(page);
@@ -85,12 +95,6 @@ function sleep(ms) {
 }
 
 
-// Funzione che serve per non far spegnere il server (richiaamo il sito così non si spegne)
-async function renderWakeUp() {
-    setInterval(() => {
-        https.get("https://testing-operatore.onrender.com");
-    }, 60000);
-}
 
 
 //Login 
