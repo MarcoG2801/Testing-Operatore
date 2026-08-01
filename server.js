@@ -49,7 +49,7 @@ var totaleVeicoli = 0;
     console.log("---------------------------------------");
 
     browser = await chromium.launch({
-        headless: true
+        headless: false,
     });
     const page = await browser.newPage();
 
@@ -525,22 +525,136 @@ function rimuoviPlurale(nomeVeicolo) {
 }
 
 
-async function logicaTrasporto(page) {
+async function logicaTrasporto(page, idMissione) {
+    // 1. Prova ad eseguire il trasporto sanitario
+    const pazienteTrasportato = await gestisciTrasportoPazienti(page, idMissione);
+    if (pazienteTrasportato) {
+        return true; // Trasporto sanitario completato, salta il resto
+    }
 
-    if (!fs.existsSync("data/mission_data.json"))
-        return;
+    // 2. Se non c'erano pazienti, prova ad eseguire il trasporto detenuti
+    const detenutoTrasportato = await gestisciTrasportoDetenuti(page, idMissione);
+    if (detenutoTrasportato) {
+        return true; // Trasporto detenuto completato
+    }
 
-    const datiMissioni = JSON.parse(
-        fs.readFileSync("data/mission_data.json", "utf8")
-    );
+    // Nessun trasporto necessario
+    return false;
+}
 
-    for (const idMissione of Object.keys(datiMissioni)) {
 
-        await page.goto(
-            `https://www.operatore112.it/missions/${idMissione}`
-        );
+async function gestisciTrasportoPazienti(page, idMissione) {
+    try {
+        const linkTrasporto = page
+            .locator("div.alert.alert-danger", { hasText: "Trasporto necessario!" })
+            .locator("a");
 
-        await gestisciTrasportoMissione(page, idMissione);
+        const count = await linkTrasporto.count();
+        if (count === 0) return false;
+
+        console.log(`[SANITA] Trovato paziente da trasportare per la missione ${idMissione}...`);
+
+        const link = linkTrasporto.first();
+        const href = await link.getAttribute("href");
+
+        await page.goto(`https://www.operatore112.it${href}`);
+        console.log("[SANITA] Controllo ospedali disponibili...");
+
+        const righeTuoOspedale = page.locator("#own-hospitals tbody tr");
+        const righeAlleanza = page.locator("#alliance-hospitals tbody tr");
+
+        const migliorTuo = await trovaOspedaleValido(righeTuoOspedale);
+        const migliorAlleanza = await trovaOspedaleValido(righeAlleanza);
+
+        let kmTuo = migliorTuo ? migliorTuo.distanza : Number.POSITIVE_INFINITY;
+        let kmAlleanza = migliorAlleanza ? migliorAlleanza.distanza : Number.POSITIVE_INFINITY;
+
+        if (!migliorTuo && !migliorAlleanza) {
+            console.log("[SANITA] Nessun ospedale con posti letto liberi disponibile.");
+        } else if (kmTuo <= kmAlleanza) {
+            console.log(`[SANITA] Trasporto verso ospedale proprio (${kmTuo} km)...`);
+            await migliorTuo.riga
+                .getByRole("link", { name: "Trasporta paziente" })
+                .click();
+        } else {
+            console.log(`[SANITA] Trasporto verso ospedale alleanza (${kmAlleanza} km)...`);
+            await migliorAlleanza.riga
+                .getByRole("link", { name: "Trasporta paziente" })
+                .click();
+        }
+
+        await page.waitForTimeout(2000);
+        console.log("✔ [SANITA] Trasporto paziente completato con successo.");
+        return true;
+
+    } catch (err) {
+        console.log("[SANITA] Errore durante il trasporto sanitario:", err);
+        return false;
+    } finally {
+        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
+    }
+}
+
+async function gestisciTrasportoDetenuti(page, idMissione) {
+    try {
+        const elDetenuti = page.locator("#h2_prisoners");
+        
+        // Verifica se ci sono detenuti indicati nella pagina
+        if (!(await elDetenuti.isVisible())) return false;
+
+        const countDetenuti = parseInt((await elDetenuti.innerText()).trim(), 10) || 0;
+        if (countDetenuti === 0) return false;
+
+        const rigaPrigionieri = page.locator(".vehicle_prisoner_select");
+        if ((await rigaPrigionieri.count()) === 0) return false;
+
+        console.log(`[POLIZIA] Trovati ${countDetenuti} detenuti da trasportare...`);
+
+        const links = rigaPrigionieri.locator("a.btn.btn-success");
+        const totale = await links.count();
+
+        if (totale === 0) {
+            console.log("[POLIZIA] Nessuna cella o commissariato disponibile.");
+            return false;
+        }
+
+        function estraiDistanza(testo) {
+            const match = testo.toLowerCase().match(/(\d+[,.]?\d*)\s*(km|m)/);
+            if (!match) return Number.MAX_VALUE;
+            let valore = parseFloat(match[1].replace(",", "."));
+            if (match[2] === "m") valore /= 1000;
+            return valore;
+        }
+
+        const destinazioni = [];
+        for (let i = 0; i < totale; i++) {
+            const link = links.nth(i);
+            const testo = await link.innerText();
+            destinazioni.push({
+                elemento: link,
+                testo: testo.trim(),
+                distanza: estraiDistanza(testo)
+            });
+        }
+
+        // Ordina per la destinazione più vicina
+        destinazioni.sort((a, b) => a.distanza - b.distanza);
+
+        if (destinazioni.length > 0) {
+            console.log(`[POLIZIA] Invio detenuto a: ${destinazioni[0].testo}`);
+            await destinazioni[0].elemento.click();
+            await page.waitForTimeout(2000);
+            console.log("✔ [POLIZIA] Trasporto detenuto completato con successo.");
+            return true;
+        }
+
+        return false;
+
+    } catch (err) {
+        console.log("[POLIZIA] Errore durante il trasporto detenuti:", err);
+        return false;
+    } finally {
+        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
     }
 }
 
@@ -582,211 +696,6 @@ async function trovaOspedaleValido(locatorRighe) {
         }
     }
     return null; // Nessun ospedale disponibile con posti liberi
-}
-
-
-async function gestisciTrasportoMissione(page, idMissione) {
-
-    try {
-
-        console.log("CONTROLLO RICHIESTE DI TRASPORTO");
-
-
-        // ---------------------------
-        // CONTROLLO PAZIENTI
-        // ---------------------------
-
-        const linkTrasporto = page
-            .locator("div.alert.alert-danger", {
-                hasText: "Trasporto necessario!"
-            })
-            .locator("a");
-
-        const numeroLink = await linkTrasporto.count();
-
-        if (numeroLink !== 0) {
-
-            for (let i = 0; i < numeroLink; i++) {
-
-                const link = linkTrasporto.nth(i);
-
-                const href = await link.getAttribute("href");
-                const testo = await link.innerText();
-
-                await page.goto(`https://www.operatore112.it${href}`);
-
-                const distanzaKm = (testo) => {
-
-                    testo = testo
-                        .toLowerCase()
-                        .replace(",", ".")
-                        .trim();
-
-                    const valore = parseFloat(
-                        testo.replace(/[^\d.]/g, "")
-                    );
-
-                    if (testo.includes("km"))
-                        return valore;
-
-                    if (testo.includes("m"))
-                        return valore / 1000;
-
-                    return valore;
-                };
-
-
-                try {
-                    try {
-                        console.log("Controllo ospedali disponibili...");
-
-                        const righeTuoOspedale = page.locator("#own-hospitals tbody tr");
-                        const righeAlleanza = page.locator("#alliance-hospitals tbody tr");
-
-                        // Cerca il primo ospedale valido con posti letto > 0
-                        const migliorTuo = await trovaOspedaleValido(righeTuoOspedale);
-                        const migliorAlleanza = await trovaOspedaleValido(righeAlleanza);
-
-                        let kmTuo = migliorTuo ? migliorTuo.distanza : Number.POSITIVE_INFINITY;
-                        let kmAlleanza = migliorAlleanza ? migliorAlleanza.distanza : Number.POSITIVE_INFINITY;
-
-                        if (!migliorTuo && !migliorAlleanza) {
-                            console.log("Nessun ospedale con posti letto liberi disponibile.");
-                        } else if (kmTuo <= kmAlleanza) {
-                            console.log(`Trasporto verso ospedale proprio (${kmTuo} km)...`);
-                            await migliorTuo.riga
-                                .getByRole("link", { name: "Trasporta paziente" })
-                                .click();
-                        } else {
-                            console.log(`Trasporto verso ospedale alleanza (${kmAlleanza} km)...`);
-                            await migliorAlleanza.riga
-                                .getByRole("link", { name: "Trasporta paziente" })
-                                .click();
-                        }
-
-                        await page.waitForTimeout(2000);
-                        console.log("TRASPORTO ESEGUITO CON SUCCESSO");
-
-                        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
-
-                    } catch (err) {
-                        console.log("Errore trasporto:", err);
-                        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
-                    }
-
-                } catch (err) {
-
-                    console.log("Errore:", err);
-
-                    await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
-                }
-            }
-
-        } else {
-
-            //console.log("Nessun paziente.");
-
-            // ---------------------------
-            // CONTROLLO DETENUTI
-            // ---------------------------
-
-            if (await page.locator(".alert-missing-vehicles").isVisible()) {
-                console.log("Alert veicoli presente.");
-            }
-
-            const bottoneCarceri = page.locator("#btn-show-available-prisons");
-
-            if (await bottoneCarceri.isVisible()) {
-                await bottoneCarceri.click();
-                await page.waitForTimeout(800);
-            }
-
-            function estraiDistanza(testo) {
-
-                const match = testo
-                    .toLowerCase()
-                    .match(/(\d+[,.]?\d*)\s*(km|m)/);
-
-                if (!match)
-                    return Number.MAX_VALUE;
-
-                let valore = parseFloat(
-                    match[1].replace(",", ".")
-                );
-
-                if (match[2] === "m")
-                    valore /= 1000;
-
-                return valore;
-            }
-
-            const rigaPrigionieri = page.locator(".vehicle_prisoner_select");
-
-            if ((await rigaPrigionieri.count()) > 0) {
-
-                const links = rigaPrigionieri.locator("a");
-
-                const totale = await links.count();
-
-                const destinazioni = [];
-
-                for (let i = 0; i < totale; i++) {
-
-                    const link = links.nth(i);
-
-                    const testo = await link.innerText();
-
-                    destinazioni.push({
-                        elemento: link,
-                        testo: testo.trim(),
-                        distanza: estraiDistanza(testo)
-                    });
-                }
-
-                destinazioni.sort(
-                    (a, b) => a.distanza - b.distanza
-                );
-
-
-                destinazioni.forEach(dest => {
-                    //console.log(
-                    //    `${dest.distanza.toFixed(3)} km -> ${dest.testo}`
-                    //);
-                });
-
-                if (destinazioni.length > 0) {
-
-                    console.log(
-                        `Invio detenuto a: ${destinazioni[0].testo}`
-                    );
-
-                    await destinazioni[0].elemento.click();
-
-                    await page.goto(
-                        `https://www.operatore112.it/missions/${idMissione}`
-                    );
-                }
-
-            } else {
-
-                console.log("Nessuna destinazione trovata.");
-
-                await page.goto(
-                    `https://www.operatore112.it/missions/${idMissione}`
-                );
-            }
-        }
-
-    } catch (err) {
-
-        console.log("Errore nella logica trasporto:", err);
-
-        await page.waitForTimeout(1000);
-
-        await page.goto(
-            `https://www.operatore112.it/missions/${idMissione}`
-        );
-    }
 }
 
 
@@ -845,7 +754,7 @@ async function logicaMissioni(page) {
             /*
                 Se logicaTrasporto() restituisce true significa
                 che ha trovato almeno un trasporto da effettuare.
-
+ 
                 In quel caso NON inviamo altri mezzi e passiamo
                 direttamente alla missione successiva.
             */
