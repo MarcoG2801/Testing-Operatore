@@ -49,7 +49,18 @@ var totaleVeicoli = 0;
     console.log("---------------------------------------");
 
     browser = await chromium.launch({
-        headless: false,
+        headless: true,
+        args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-extensions",
+            "--disable-background-networking",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding",
+            "--disable-features=site-per-process"
+        ]
     });
     const page = await browser.newPage();
 
@@ -587,7 +598,7 @@ async function gestisciTrasportoPazienti(page, idMissione) {
 async function gestisciTrasportoDetenuti(page, idMissione) {
     try {
         const elDetenuti = page.locator("#h2_prisoners");
-        
+
         // Verifica se ci sono detenuti indicati nella pagina
         if (!(await elDetenuti.isVisible())) return false;
 
