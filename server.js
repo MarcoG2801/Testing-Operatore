@@ -40,7 +40,6 @@ const fileMissioni = path.join(__dirname, "data", "mission_data.json");
 
 
 var totaleVeicoli = 0;
-var completeMissions = 0;
 
 // Main
 (async () => {
@@ -88,7 +87,6 @@ var completeMissions = 0;
         await sleep(5000);
     }
 })();
-
 
 
 function sleep(ms) {
@@ -173,6 +171,7 @@ async function raccogliDatiVeicoli(page) {
     const idVeicoli = [];
     try {
 
+        await page.goto("https://www.operatore112.it/leitstellenansicht");
         await page.waitForSelector(".list-group");
 
         // Recupera tutti i link che puntano ai veicoli
@@ -592,6 +591,7 @@ async function gestisciTrasportoPazienti(page, idMissione) {
         console.log("[SANITA] Errore durante il trasporto sanitario:", err);
         return false;
     } finally {
+        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
     }
 }
 
@@ -654,6 +654,7 @@ async function gestisciTrasportoDetenuti(page, idMissione) {
         console.log("[POLIZIA] Errore durante il trasporto detenuti:", err);
         return false;
     } finally {
+        await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
     }
 }
 
@@ -811,6 +812,10 @@ async function navigaEInviaMezzi(page, idMissione) {
     const nomeMissione = dati.mission_name || "Missione sconosciuta";
     const autoIncidentate = dati.crashed_cars || 0;
     const pazienti = dati.patients || 0;
+
+    await page.goto(
+        `https://www.operatore112.it/missions/${idMissione}`
+    );
 
 
     // Aspetta che la missione venga caricata
