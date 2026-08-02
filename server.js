@@ -45,43 +45,74 @@ var totaleVeicoli = 0;
 (async () => {
     console.log("---------------------------------------");
     console.log(new Date().toISOString());
-    console.log("Avvio browser...");
+    console.log("Avvio browser ottimizzato RAM...");
     console.log("---------------------------------------");
 
-    browser = await chromium.launch({
-        headless: true,
+    const browser = await chromium.launch({
+        headless: false,
         args: [
             "--no-sandbox",
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
             "--disable-extensions",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-default-apps",
+            "--mute-audio",
+            "--no-default-browser-check",
+            "--autoplay-policy=user-gesture-required",
             "--disable-background-networking",
             "--disable-background-timer-throttling",
+            "--disable-backgrounding-occluded-windows",
+            "--disable-breakpad",
+            "--disable-client-side-phishing-detection",
+            "--disable-component-update",
+            "--disable-domain-reliability",
+            "--disable-features=AudioServiceOutOfProcess,IsolateOrigins,site-per-process",
+            "--disable-hang-monitor",
+            "--disable-ipc-flooding-protection",
+            "--disable-popup-blocking",
+            "--disable-prompt-on-repost",
             "--disable-renderer-backgrounding",
-            "--disable-features=site-per-process"
+            "--disable-sync",
+            "--force-color-profile=srgb",
+            "--metrics-recording-only",
+            "--no-first-run",
+            "--password-store=basic",
+            "--use-gl=swiftshader",
+            "--use-mock-keychain",
+            "--js-flags=--max-old-space-size=96" // Forza Node/V8 a stare sotto i 96MB
         ]
     });
-    const page = await browser.newPage();
+
+    const context = await browser.newContext();
+    const page = await context.newPage();
+
+    // Blocca immagini e CSS
+    await page.route("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", route => route.abort());
 
     while (true) {
+        try {
+            if (controlFirstLogin) {
+                await login(page);
+                controlFirstLogin = false;
+                await assunzione(page);
+            }
 
-        if (controlFirstLogin) {
-            await login(page);
-            controlFirstLogin = false;
-            await assunzione(page);
+            if (totaleVeicoli === 0) {
+                console.log("Raccolta dati veicoli...");
+                await raccogliDatiVeicoli(page);
+            }
+
+            await controllaDatiMissioni(page);
+            await logicaMissioni(page);
+
+        } catch (err) {
+            console.error("Errore nel ciclo principale:", err);
         }
 
-        if (totaleVeicoli === 0) {
-            console.log("Raccolta dati veicoli...");
-            await raccogliDatiVeicoli(page);
-        }
-
-        await controllaDatiMissioni(page);
-
-
-        // 2. solo dopo invio i mezzi
-        await logicaMissioni(page);
+        // Pulisci memoria a fine ciclo
+        if (global.gc) global.gc();
 
         console.log("Attendo 5 secondi...");
         await sleep(5000);
