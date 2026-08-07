@@ -88,8 +88,20 @@ var totaleVeicoli = 0;
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    // Blocca immagini e CSS
-    await page.route("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", route => route.abort());
+    await page.route("**/*", route => {
+        const type = route.request().resourceType();
+
+        if (
+            type === "image" ||
+            type === "font" ||
+            type === "media" ||
+            type === "stylesheet"
+        ) {
+            return route.abort();
+        }
+
+        route.continue();
+    });
 
     while (true) {
         try {
@@ -114,8 +126,9 @@ var totaleVeicoli = 0;
         // Pulisci memoria a fine ciclo
         if (global.gc) global.gc();
 
-        console.log("Attendo 5 secondi...");
-        await sleep(5000);
+        console.log("Attendo 60 secondi...");
+        await sleep(60000);
+        await page.goto("about:blank");
     }
 })();
 
