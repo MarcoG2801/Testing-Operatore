@@ -4,12 +4,14 @@
   "description": "Playwright H24 Render",
   "main": "server.js",
   "scripts": {
-    "start": "node --expose-gc --max-old-space-size=256 server.js",
+    "start": "node --max-old-space-size=256 --expose-gc server.js",
     "postinstall": "playwright install chromium"
   },
   "dependencies": {
     "chalk": "^4.1.2",
     "express": "^4.21.2",
-    "playwright": "^1.61.1"
+    "playwright": "^1.61.1",
+    "playwright-extra": "^4.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }

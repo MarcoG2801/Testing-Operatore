@@ -1,10 +1,15 @@
 const express = require("express");
-const { chromium } = require("playwright");
+// Sostituisci l'import di playwright con playwright-extra e stealth
+const { chromium } = require("playwright-extra");
+const stealth = require("puppeteer-extra-plugin-stealth")();
+
+// Attiva il plugin stealth prima di lanciare il browser
+chromium.use(stealth);
+
 const chalk = require("chalk");
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -27,12 +32,13 @@ app.listen(PORT, () => {
 });
 
 
-username = "Luca_Endy89";
-password = "Gemelli@2001";
-controlFirstLogin = true;
-var edificiLink = [];
-var edificiUrl = [];
-get_alliance_mission = false;
+// Correzione variabili globali in cima al file
+const username = "Luca_Endy89";
+const password = "Gemelli@2001";
+let controlFirstLogin = true;
+let edificiLink = [];
+let edificiUrl = [];
+const get_alliance_mission = false;
 
 const cartellaData = path.join(__dirname, "data");
 const fileVeicoli = path.join(cartellaData, "vehicle_data.json");
@@ -85,7 +91,12 @@ var totaleVeicoli = 0;
         ]
     });
 
-    const context = await browser.newContext();
+    const context = await browser.newContext({
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        viewport: { width: 1366, height: 768 },
+        locale: "it-IT",
+        timezoneId: "Europe/Rome"
+    });
     const page = await context.newPage();
 
     await page.route("**/*", route => {
@@ -126,14 +137,20 @@ var totaleVeicoli = 0;
         // Pulisci memoria a fine ciclo
         if (global.gc) global.gc();
 
-        console.log("Attendo 60 secondi...");
-        await sleep(60000);
+        console.log("Attendo secondi random prima del prossimo ciclo...");
+        await sleepRandom(10000, 60000);
         await page.goto("about:blank");
     }
 })();
 
 
 function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// Invece di sleep(60000), genera un'attesa dinamica (es. tra 0 e 60 secondi)
+function sleepRandom(minMs, maxMs) {
+    const ms = Math.floor(Math.random() * (maxMs - minMs + 1)) + minMs;
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
@@ -172,6 +189,8 @@ async function login(page) {
     } catch (e) {
         console.error(chalk.red('Thread ${threadId} encountered an error:'), e);
     }
+
+    await sleepRandom(500, 2000); // Attesa random tra 0.5 e 2 secondi
 }
 
 
@@ -197,6 +216,8 @@ async function assunzione(page) {
         const buildingId = buildingUrl.split("/")[2];
 
         await page.goto(`https://www.operatore112.it/buildings/${buildingId}/hire`);
+
+        await sleepRandom(500, 2000); // Attesa random tra 0.5 e 2 secondi
 
         const hireButton = await page.$(
             `a[href="/buildings/${buildingId}/hire_do/3"]`
@@ -294,7 +315,7 @@ async function raccogliInfoVeicoli(listaIdVeicoli, page) {
 
         try {
             console.log(
-                `Thread: Veicolo ${i + 1}/${listaIdVeicoli.length}`
+                `Veicolo ${i + 1}/${listaIdVeicoli.length}`
             );
 
             // Apre la pagina del veicolo
@@ -351,6 +372,8 @@ async function controllaDatiMissioni(page) {
 
         console.log(`Trovate ${idMissioni.length} missioni`);
 
+        await sleepRandom(500, 2000); // Attesa random tra 0.5 e 2 secondi
+
         const datiMissioni = await raccogliInfoMissioni(idMissioni, page);
 
         fs.writeFileSync(
@@ -374,7 +397,7 @@ async function raccogliInfoMissioni(idMissioni, page) {
             console.log(`Missione ${i + 1}/${idMissioni.length}`);
 
             await page.goto(`https://www.operatore112.it/missions/${idMissione}`);
-            await page.waitForSelector("#missionH1", { timeout: 5000 });
+            await sleepRandom(500, 2000); // Attesa random tra 0.5 e 2 secondi
 
             const gettoneEvento = await page.$("#easter-egg-link");
 
@@ -396,6 +419,7 @@ async function raccogliInfoMissioni(idMissioni, page) {
 
             const pazienti = await page.locator("//div[contains(@class,'mission_patient')]").count();
 
+            await sleepRandom(500, 2000); // Attesa random tra 0.5 e 2 secondi
             await page.click("#mission_help");
             await page.waitForSelector("#iframe-inside-container", {
                 timeout: 5000
@@ -850,6 +874,21 @@ async function navigaEInviaMezzi(page, idMissione) {
 
     if (!dati) {
         console.log(`Missione ${idMissione} non trovata nel file.`);
+        return;
+    }
+
+    // -----------------------------------------------------------------
+    // CONTROLLO CREDITI: Se i crediti sono >= 3000, non inviare mezzi
+    // -----------------------------------------------------------------
+    if (dati.credits >= 3000) {
+        console.log(
+            `Missione ${idMissione} ignorata: ha ${dati.credits} crediti (>= 3000). Nessun veicolo inviato e CONDIVISIONE ALLEANZA.`
+        );
+
+        //await page.goto(
+        //  `https://www.operatore112.it/missions/${idMissione}/alliance`
+        //);
+
         return;
     }
 
@@ -1575,9 +1614,6 @@ async function contaMezziGiaSelezionati(pagina, nomeMezzo) {
             .evaluateAll(elementi =>
                 elementi.map(elemento => elemento.href)
             );
-
-        // Carica il database dei mezzi una sola volta
-        const fs = require("fs");
 
         const datiMezzi = JSON.parse(
             fs.readFileSync("data/vehicle_data.json", "utf8")
