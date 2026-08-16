@@ -41,7 +41,13 @@ const fileMissioni = path.join(__dirname, "data", "mission_data.json");
 
 var totaleVeicoli = 0;
 
-async function avviaBrowser() {
+// Main
+(async () => {
+    console.log("---------------------------------------");
+    console.log(new Date().toISOString());
+    console.log("Avvio browser ottimizzato RAM...");
+    console.log("---------------------------------------");
+
     const browser = await chromium.launch({
         headless: true,
         args: [
@@ -75,48 +81,18 @@ async function avviaBrowser() {
             "--password-store=basic",
             "--use-gl=swiftshader",
             "--use-mock-keychain",
-            "--js-flags=--max-old-space-size=96"
+            "--js-flags=--max-old-space-size=96" // Forza Node/V8 a stare sotto i 96MB
         ]
     });
 
     const context = await browser.newContext();
     const page = await context.newPage();
 
-    await page.route("**/*", route => {
-        const type = route.request().resourceType();
-        if (["image", "font", "media", "stylesheet"].includes(type)) {
-            return route.abort();
-        }
-        route.continue();
-    });
-
-    return { browser, page };
-}
-
-// Main con recupero automatico
-(async () => {
-    let browserObj = null;
-    let page = null;
+    // Blocca immagini e CSS
+    await page.route("**/*.{png,jpg,jpeg,gif,svg,css,woff,woff2}", route => route.abort());
 
     while (true) {
         try {
-            // Se il browser o la pagina non esistono più o sono chiusi, ricreali
-            if (!browserObj || !browserObj.isConnected() || !page || page.isClosed()) {
-                console.log("---------------------------------------");
-                console.log(new Date().toISOString());
-                console.log("Inizializzazione/Riavvio browser...");
-                console.log("---------------------------------------");
-
-                if (browserObj) await browserObj.close().catch(() => { });
-
-                const risorse = await avviaBrowser();
-                browserObj = risorse.browser;
-                page = risorse.page;
-
-                // Forziamo il re-login in caso di riavvio del browser
-                controlFirstLogin = true;
-            }
-
             if (controlFirstLogin) {
                 await login(page);
                 controlFirstLogin = false;
@@ -131,26 +107,15 @@ async function avviaBrowser() {
             await controllaDatiMissioni(page);
             await logicaMissioni(page);
 
-            console.log("Attendo 60 secondi...");
-            await sleep(60000);
-            if (page && !page.isClosed()) {
-                await page.goto("about:blank");
-            }
-
         } catch (err) {
-            console.error("Errore nel ciclo principale, resetto il browser:", err);
-            // Chiude il browser guasto per forzarne la ricreazione al prossimo ciclo
-            if (browserObj) {
-                await browserObj.close().catch(() => { });
-            }
-            browserObj = null;
-            page = null;
-
-            // Attendi 10 secondi prima di riprovare
-            await sleep(10000);
+            console.error("Errore nel ciclo principale:", err);
         }
 
+        // Pulisci memoria a fine ciclo
         if (global.gc) global.gc();
+
+        console.log("Attendo 5 secondi...");
+        await sleep(5000);
     }
 })();
 
@@ -184,7 +149,7 @@ async function login(page) {
             return {
                 status: "Failure",
                 message: 'Invalid email or password',
-                browser: browserObj
+                browser
             };
 
         } catch {
