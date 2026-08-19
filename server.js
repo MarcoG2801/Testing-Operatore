@@ -420,10 +420,15 @@ async function raccogliInfoMissioni(idMissioni, page) {
             const pazienti = await page.locator("//div[contains(@class,'mission_patient')]").count();
 
             await sleepRandom(500, 2000); // Attesa random tra 0.5 e 2 secondi
-            await page.click("#mission_help");
-            await page.waitForSelector("#iframe-inside-container", {
-                timeout: 5000
-            });
+            const helpButton = await page.$("#mission_help");
+            if (helpButton) {
+                await helpButton.click();
+                try {
+                    await page.waitForSelector("#iframe-inside-container", { timeout: 15000 });
+                } catch (e) {
+                    console.log(`[ATTENZIONE] Iframe non apparso in tempo per la missione ${idMissione}`);
+                }
+            }
 
             const veicoli = await requisitiVeicoli(page);
 
