@@ -806,9 +806,7 @@ async function logicaMissioni(page) {
                 `https://www.operatore112.it/missions/${idMissione}`
             );
 
-            await page.waitForSelector("#missionH1", {
-                timeout: 5000
-            });
+            await page.waitForSelector("#missionH1");
 
             //-------------------------------------------------
             // PRIMA CONTROLLO TRASPORTI
@@ -902,9 +900,7 @@ async function navigaEInviaMezzi(page, idMissione) {
     // Aspetta che la missione venga caricata
     try {
 
-        await page.waitForSelector("#missionH1", {
-            timeout: 5000
-        });
+        await page.waitForSelector("#missionH1");
 
     } catch (errore) {
 
