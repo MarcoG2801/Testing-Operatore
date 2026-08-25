@@ -33,7 +33,7 @@ app.listen(PORT, () => {
 
 
 // Correzione variabili globali in cima al file
-const username = "Luca_Endy89";
+const username = "mijowey338@kolsea.com";
 const password = "Gemelli@2001";
 let controlFirstLogin = true;
 let edificiLink = [];
