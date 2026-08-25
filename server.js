@@ -295,6 +295,86 @@ async function raccogliDatiVeicoli(page) {
             errore
         );
     }
+} async function raccogliDatiVeicoli(page) {
+    try {
+        await page.goto("https://www.operatore112.it/leitstellenansicht");
+        await page.waitForSelector(".list-group");
+
+        const collegamentiVeicoli = await page
+            .locator('.list-group a[href^="/vehicles/"]')
+            .all();
+
+        const idTrovati = [];
+        for (const collegamento of collegamentiVeicoli) {
+            const urlVeicolo = await collegamento.getAttribute("href");
+            if (urlVeicolo) {
+                idTrovati.push(urlVeicolo.split("/").pop());
+            }
+        }
+
+        totaleVeicoli = idTrovati.length;
+        console.log(`Trovati ${totaleVeicoli} ID veicoli.`);
+
+        // 1. Carica la cache esistente dal file, se presente
+        let datiEsistenti = {};
+        if (fs.existsSync(fileVeicoli)) {
+            try {
+                datiEsistenti = JSON.parse(fs.readFileSync(fileVeicoli, "utf8"));
+            } catch (e) {
+                datiEsistenti = {};
+            }
+        }
+
+        // 2. Aggiorna in modo incrementale
+        const vehicle_data = await aggiornaInfoVeicoliIncrementale(idTrovati, datiEsistenti, page);
+
+        // 3. Salva su file
+        if (!fs.existsSync(cartellaData)) fs.mkdirSync(cartellaData, { recursive: true });
+        fs.writeFileSync(fileVeicoli, JSON.stringify(vehicle_data, null, 4), "utf8");
+
+        console.log(`Dati veicoli aggiornati in ${fileVeicoli}.`);
+
+    } catch (errore) {
+        console.error("Errore durante la raccolta dati veicoli:", errore);
+    }
+}
+
+async function aggiornaInfoVeicoliIncrementale(idTrovati, datiEsistenti, page) {
+    // Invertiamo il mapping per verificare rapidamente quali ID conosciamo già
+    // Struttura mappaIdEsistenti: { "1234": "Ambulanza", "5678": "Autopompa" }
+    const mappaIdEsistenti = {};
+    for (const [tipo, listaId] of Object.entries(datiEsistenti)) {
+        for (const id of listaId) {
+            mappaIdEsistenti[id] = tipo;
+        }
+    }
+
+    const risultatoFinale = {};
+
+    for (let i = 0; i < idTrovati.length; i++) {
+        const id = idTrovati[i];
+
+        if (mappaIdEsistenti[id]) {
+            // L'ID è già presente: non facciamo alcuna pagina.goto!
+            const tipo = mappaIdEsistenti[id];
+            if (!risultatoFinale[tipo]) risultatoFinale[tipo] = [];
+            risultatoFinale[tipo].push(id);
+        } else {
+            // Nuovissimo veicolo: facciamo il recupero via browser
+            try {
+                console.log(`[NUOVO VEICOLO] Recupero info per ID ${id}...`);
+                await page.goto(`https://www.operatore112.it/vehicles/${id}`);
+                const tipoVeicolo = await page.locator("#vehicle-attr-type a").innerText();
+
+                if (!risultatoFinale[tipoVeicolo]) risultatoFinale[tipoVeicolo] = [];
+                risultatoFinale[tipoVeicolo].push(id);
+            } catch (err) {
+                console.error(`Errore sul nuovo veicolo ${id}: ${err.message}`);
+            }
+        }
+    }
+
+    return risultatoFinale;
 }
 
 
